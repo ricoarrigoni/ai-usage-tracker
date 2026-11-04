@@ -17,7 +17,7 @@ printf '%s' "$input" | "$JQ" -c --argjson t "$now" \
 printf '%s' "$input" | "$JQ" -r '
   def pct($w): if $w.used_percentage == null then "–" else "\($w.used_percentage | floor)%" end;
   if .rate_limits == null then "limits: waiting for first reply"
-  else "5h \(pct(.rate_limits.five_hour // {})) · 7d \(pct(.rate_limits.seven_day // {}))"
+  else "Session \(pct(.rate_limits.five_hour // {})) · Week \(pct(.rate_limits.seven_day // {}))"
   end' 2>/dev/null
 
 exit 0

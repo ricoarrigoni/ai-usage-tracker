@@ -61,7 +61,7 @@ struct LimitSplitSection: View {
                 SplitBar(claudeCode: Double(claudeCode), other: Double(other))
                 legendRow("Claude Code", value: "~\(claudeCode)%", color: SplitColor.claudeCode(scheme))
                 legendRow("Chat, Cowork & other", value: "~\(other)%", color: SplitColor.other(scheme))
-                Text("Estimate from your 5-hour limit, \(scope).")
+                Text("Estimate from your session limit, \(scope).")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -76,11 +76,5 @@ struct LimitSplitSection: View {
             Spacer()
             Text(value).font(.caption).monospacedDigit()
         }
-    }
-}
-
-enum Money {
-    static func text(_ value: Double) -> String {
-        value >= 100 ? String(format: "≈$%.0f", value) : String(format: "≈$%.2f", value)
     }
 }

@@ -33,6 +33,9 @@ public final class DashboardModel {
         do {
             dashboard = try await engine.load(takeAlerts: true)
             if !dashboard.alerts.isEmpty { onAlerts(dashboard.alerts) }
+            if await engine.updateExchangeRates() {
+                dashboard = try await engine.load()
+            }
         } catch {
             dashboard.problem = "Couldn't read usage: \(error)"
         }

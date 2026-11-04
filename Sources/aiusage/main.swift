@@ -13,7 +13,7 @@ let usage = """
     Options:
       --by <day|project|model|source>
       --days <n>                  Only the last n days, including today
-      --json                      Exact numbers as JSON
+      --json                      Exact numbers as JSON, with costs in US dollars
       --no-sync                   Don't read new logs first
 
     Not included: chat, Cowork with no logs on this Mac, background requests Claude Code
@@ -70,11 +70,12 @@ func startDate(days: Int) -> Date {
 
 func short(_ number: Int64) -> String { TokenFormat.short(number) }
 
-func printTable(firstColumn: String, rows: [ReportRow]) {
-    let headers = [firstColumn, "Replies", "Input", "Output", "Cache write", "Cache read", "Total"]
+func printTable(firstColumn: String, rows: [ReportRow], money: MoneyFormat) {
+    let headers = [firstColumn, "Replies", "Input", "Output", "Cache write", "Cache read", "Total", "API cost"]
     let body = rows.map { row in
         [row.label, String(row.totals.replies), short(row.totals.input), short(row.totals.output),
-         short(row.totals.cacheWrite), short(row.totals.cacheRead), short(row.totals.total)]
+         short(row.totals.cacheWrite), short(row.totals.cacheRead), short(row.totals.total),
+         row.costUSD.map(money.plain) ?? "–"]
     }
     let table = [headers] + body
     let widths = headers.indices.map { column in table.map { $0[column].count }.max() ?? 0 }
@@ -97,6 +98,7 @@ let options = parseOptions(Array(CommandLine.arguments.dropFirst()))
 
 do {
     let store = try UsageStore(locations: .standard())
+    let money = MoneyFormat.current(locations: .standard())
 
     if options.sync || options.syncOnly {
         let summary = try store.sync()
@@ -117,20 +119,26 @@ do {
         if options.json {
             try printJSON(rows)
         } else {
-            printTable(firstColumn: grouping.rawValue.capitalized, rows: rows)
+            printTable(firstColumn: grouping.rawValue.capitalized, rows: rows, money: money)
         }
     } else {
-        var periods = [
-            ReportRow(label: "Today", totals: try store.totals(since: startDate(days: 1))),
-            ReportRow(label: "Last 7 days", totals: try store.totals(since: startDate(days: 7))),
-            ReportRow(label: "Last 30 days", totals: try store.totals(since: startDate(days: 30))),
+        func period(_ label: String, since: Date?) throws -> ReportRow {
+            let cost = try store.cost(since: since).usd
+            return ReportRow(label: label, totals: try store.totals(since: since), costUSD: cost > 0 ? cost : nil)
+        }
+        let periods = [
+            try period("Today", since: startDate(days: 1)),
+            try period("Last 7 days", since: startDate(days: 7)),
+            try period("Last 30 days", since: startDate(days: 30)),
+            try period("All recorded", since: nil),
         ]
-        periods.append(ReportRow(label: "All recorded", totals: try store.totals()))
         if options.json {
             try printJSON(periods)
         } else {
-            printTable(firstColumn: "Period", rows: periods)
-            print("\nNot included: chat, Cowork with no logs on this Mac, background requests Claude Code doesn't log,")
+            printTable(firstColumn: "Period", rows: periods, money: money)
+            print("\nAPI cost is what this use would cost at API list prices, not what your plan costs.")
+            if let note = money.conversionNote { print(note) }
+            print("Not included: chat, Cowork with no logs on this Mac, background requests Claude Code doesn't log,")
             print("and logs deleted before the first sync.")
         }
     }

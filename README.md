@@ -15,18 +15,29 @@ The app sends one notification per window at 80% and at 95%, and has an **Open a
 It signs with your Apple Development certificate when there is one, so macOS keeps its permissions
 across rebuilds.
 
-The menu bar shows whichever limit is fuller. The panel shows both limits, your pace, how recent the
-readings are, and today's logged usage. **History…** opens a window with usage per day, by project and
-by model, and each 5-hour window. The app checks for new data every 30 seconds and never sends anything
+The menu bar shows whichever limit is fuller. The panel shows your current session and weekly limits,
+your pace, how recent the readings are, what your logged use would cost at API prices, and today's
+usage. **History…** opens a window with usage and cost per day, by project and by model, and your
+sessions. A session is Claude's 5-hour limit window. The app checks for new data every 30 seconds and never sends anything
 to Claude.
 
-"Where your limit went" is an estimate. The app measures how many 5-hour limit points a dollar of Claude
+"Where your limit went" is an estimate. The app measures how many session limit points a dollar of Claude
 Code use costs, using Claude Code's own session cost. Any rise that doesn't explain goes to "Chat, Cowork
 & other". It stays in "still measuring" until it has three rises of at least 3 points to compare, and
 sessions with no status line, such as `claude -p`, count as "other".
 
 Limit readings come from the status line script described under Step 1, so they only change when
 Claude Code receives a reply.
+
+Costs apply API list prices to the tokens in your logs, including cache reads and writes. They show what
+the same use would cost on the API, not what your plan costs. The logs miss some background requests, so
+costs are a lower bound. Update `Sources/UsageCore/Pricing.swift` when prices or models change.
+
+Costs appear in the currency of your Mac's region, because your Claude account's billing currency isn't
+available on this Mac. If that currency isn't US dollars, the app downloads the European Central Bank's
+reference rates once a day. That request carries nothing about you or your usage. Past costs use the
+latest rate, and amounts stay in dollars until a rate is available or if the bank doesn't list your
+currency.
 
 ## Command line tool
 

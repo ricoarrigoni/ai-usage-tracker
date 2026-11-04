@@ -101,7 +101,7 @@ private func date(_ t: Int64) -> Date { Date(timeIntervalSince1970: TimeInterval
                   window(.sevenDay, 40, resets: 1_400_000, changed: 999_990)),
             lastReply: nil, now: now
         )
-        #expect(d.menuTitle == "7d 40%")
+        #expect(d.menuTitle == "Week 40%")
         #expect(d.limits.map(\.kind) == [.fiveHour, .sevenDay])
     }
 
@@ -150,7 +150,7 @@ private func date(_ t: Int64) -> Date { Date(timeIntervalSince1970: TimeInterval
         let s = state(window(.fiveHour, 50, resets: end, changed: now.int))
         let pace = try #require(Dashboard.pace(s, asOf: now, now: now))
         #expect(pace.isWarning)
-        #expect(pace.text.contains("5-hour"))
+        #expect(pace.text.contains("session limit"))
     }
 
     @Test func paceIsCalmWhenUnderTheLimit() throws {
@@ -184,7 +184,7 @@ private extension Date {
         try Data(line.utf8).write(to: sandbox.locations.dataDirectory.appendingPathComponent("readings.jsonl"))
 
         let dashboard = try await DashboardEngine(locations: sandbox.locations).load(now: now)
-        #expect(dashboard.menuTitle == "5h 12%")
+        #expect(dashboard.menuTitle == "Session 12%")
         #expect(dashboard.days.count == 7)
         #expect(dashboard.days.last?.isToday == true)
         #expect(dashboard.days.last?.total == 100)
@@ -387,7 +387,8 @@ private func costReading(_ t: Int64, session: String = "a", cost: Double?, five:
         #expect(week.days.filter { $0.totals.replies > 0 }.count == 2)
         #expect(week.totals.replies == 2)
         #expect(week.models.count == 2)
-        #expect(week.costUSD == nil)
+        #expect(try #require(week.costUSD) > 0)
+        #expect(week.unpricedReplies == 1)
 
         let two = try await engine.history(days: 2, now: now)
         #expect(two.totals.replies == 1)
@@ -437,7 +438,7 @@ private func costReading(_ t: Int64, session: String = "a", cost: Double?, five:
         state.windows[.fiveHour]?.percent = 97
         let higher = try restarted.takeDueAlerts(state, now: now)
         #expect(higher.map(\.threshold) == [95])
-        #expect(higher.first?.title == "5-hour limit at 97%")
+        #expect(higher.first?.title == "Session limit at 97%")
 
         state.windows[.fiveHour] = window(81, end: date(1_030_000))
         #expect(try restarted.takeDueAlerts(state, now: now).map(\.threshold) == [80])

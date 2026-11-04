@@ -17,7 +17,7 @@ struct AIUsageTrackerApp: App {
         if CommandLine.arguments.contains("--test-alert") {
             notifier.send(
                 id: "test-\(UUID().uuidString)",
-                title: "5-hour limit at 80%",
+                title: "Session limit at 80%",
                 body: "This is a test from AI Usage Tracker."
             )
         }

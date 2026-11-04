@@ -53,6 +53,25 @@ public final class UsageStore {
             ) WITHOUT ROWID;
             """)
         try createAlertTable()
+        try addCostColumnsIfNeeded()
+    }
+
+    /// Costs need more detail than earlier versions saved. Forgetting the read positions makes the
+    /// next sync read every log again and fill it in. Rows whose logs are gone keep what they have.
+    private func addCostColumnsIfNeeded() throws {
+        var columns: Set<String> = []
+        try database.prepare("PRAGMA table_info(responses)").run { row in
+            if let name = row.text(1) { columns.insert(name) }
+        }
+        guard !columns.contains("cache_write_5m") else { return }
+        try database.transaction {
+            try database.execute("""
+                ALTER TABLE responses ADD COLUMN cache_write_5m INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE responses ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE responses ADD COLUMN is_fast INTEGER NOT NULL DEFAULT 0;
+                DELETE FROM log_files;
+                """)
+        }
     }
 
     /// Reads whatever is new in the logs. Safe to run at any time, as often as you like.
@@ -123,13 +142,16 @@ public final class UsageStore {
             let insert = try database.prepare("""
                 INSERT INTO responses
                     (message_id, source, session_id, project, model, ts, is_subagent,
-                     input, output, cache_write, cache_read)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     input, output, cache_write, cache_read, cache_write_5m, cache_write_1h, is_fast)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (message_id) DO UPDATE SET
                     input = max(input, excluded.input),
                     output = max(output, excluded.output),
                     cache_write = max(cache_write, excluded.cache_write),
-                    cache_read = max(cache_read, excluded.cache_read)
+                    cache_read = max(cache_read, excluded.cache_read),
+                    cache_write_5m = max(cache_write_5m, excluded.cache_write_5m),
+                    cache_write_1h = max(cache_write_1h, excluded.cache_write_1h),
+                    is_fast = max(is_fast, excluded.is_fast)
                 """)
             let output = try LogFileReader.read(log.url, from: offset) { record in
                 let project = log.source == .cowork
@@ -147,6 +169,9 @@ public final class UsageStore {
                     .int(record.output),
                     .int(record.cacheWrite),
                     .int(record.cacheRead),
+                    .int(record.cacheWrite5m),
+                    .int(record.cacheWrite1h),
+                    .int(record.isFast ? 1 : 0),
                 ])
             }
             try database.prepare("""

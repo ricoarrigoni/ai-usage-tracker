@@ -94,8 +94,8 @@ public struct HistoryContent: View {
                     LimitSplitSection(status: split, scope: range.rawValue.lowercased())
                 }
                 HStack(alignment: .top, spacing: 24) {
-                    BreakdownList(title: "By project", rows: history.projects)
-                    BreakdownList(title: "By model", rows: history.models)
+                    BreakdownList(title: "By project", rows: history.projects, money: history.money)
+                    BreakdownList(title: "By model", rows: history.models, money: history.money)
                 }
                 windowList
                 footnote
@@ -109,14 +109,9 @@ public struct HistoryContent: View {
             stat("Cached reads", TokenFormat.short(history.totals.cacheRead))
             stat("Replies", history.totals.replies.formatted())
             if let cost = history.costUSD {
-                stat(costTitle, Money.text(cost))
+                stat("Estimated cost at API prices", history.money.approximate(cost))
             }
         }
-    }
-
-    private var costTitle: String {
-        guard let since = history.costTrackedSince else { return "At API prices" }
-        return "At API prices, since \(since.formatted(.dateTime.month(.abbreviated).day()))"
     }
 
     private func stat(_ title: String, _ value: String) -> some View {
@@ -137,16 +132,16 @@ public struct HistoryContent: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            DayChart(days: history.days, metric: metric)
-                .frame(height: 180)
+            DayChart(days: history.days, metric: metric, money: history.money)
+                .frame(height: 204)
         }
     }
 
     private var windowList: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("5-hour windows").font(.headline)
+            Text("Sessions").font(.headline)
             if history.windows.isEmpty {
-                Text("No windows recorded in this period.").font(.caption).foregroundStyle(.secondary)
+                Text("No sessions recorded in this period.").font(.caption).foregroundStyle(.secondary)
             }
             ForEach(history.windows.prefix(20)) { window in
                 WindowRow(window: window)
@@ -157,8 +152,12 @@ public struct HistoryContent: View {
     private var footnote: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Tokens are logged Claude Code use, plus any Cowork logs on this Mac. Chat, recent Cowork and some background requests aren't counted, so treat them as a lower bound.")
-            if let since = history.costTrackedSince {
-                Text("Costs are Claude Code's own estimates at API list prices, not what you pay, and start from \(since.formatted(date: .abbreviated, time: .shortened)).")
+            Text("Costs apply API list prices to those logged tokens. They show what the same use would cost on the API, not what your plan costs.")
+            if let note = history.money.conversionNote {
+                Text(note)
+            }
+            if history.unpricedReplies > 0 {
+                Text("\(history.unpricedReplies) replies used a model with no known price and aren't in the cost.")
             }
         }
         .font(.caption)
@@ -170,6 +169,7 @@ public struct HistoryContent: View {
 private struct DayChart: View {
     let days: [UsageHistory.Day]
     let metric: HistoryContent.Metric
+    let money: MoneyFormat
     @State private var selected: Date?
 
     private func value(_ day: UsageHistory.Day) -> Int64 {
@@ -182,6 +182,32 @@ private struct DayChart: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            readout
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(height: 16, alignment: .leading)
+            chart
+        }
+    }
+
+    /// Kept in its own line above the chart, so details can never cover the title or the bars.
+    @ViewBuilder private var readout: some View {
+        if let day = selectedDay {
+            Text(description(of: day, prefix: day.date.formatted(date: .abbreviated, time: .omitted)))
+        } else if let peak = days.max(by: { value($0) < value($1) }), value(peak) > 0 {
+            Text(description(of: peak, prefix: "Busiest: \(peak.date.formatted(date: .abbreviated, time: .omitted))"))
+        }
+    }
+
+    private func description(of day: UsageHistory.Day, prefix: String) -> String {
+        var text = "\(prefix) · \(TokenFormat.short(value(day))) tokens"
+        if let cost = day.costUSD { text += " · \(money.approximate(cost))" }
+        return text
+    }
+
+    private var chart: some View {
         Chart {
             ForEach(days) { day in
                 BarMark(x: .value("Day", day.date, unit: .day), y: .value("Tokens", value(day)))
@@ -191,16 +217,6 @@ private struct DayChart: View {
             if let day = selectedDay {
                 RuleMark(x: .value("Day", day.date, unit: .day))
                     .foregroundStyle(.secondary.opacity(0.4))
-                    .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(day.date.formatted(date: .abbreviated, time: .omitted)).font(.caption2)
-                            Text("\(TokenFormat.short(value(day))) tokens")
-                                .font(.caption.weight(.semibold))
-                                .monospacedDigit()
-                        }
-                        .padding(5)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5))
-                    }
             }
         }
         .chartXSelection(value: $selected)
@@ -219,6 +235,7 @@ private struct DayChart: View {
 private struct BreakdownList: View {
     let title: String
     let rows: [ReportRow]
+    let money: MoneyFormat
 
     private var largest: Int64 { rows.map(\.totals.total).max() ?? 0 }
 
@@ -230,7 +247,7 @@ private struct BreakdownList: View {
                     HStack {
                         Text(row.label).font(.caption).lineLimit(1).truncationMode(.middle)
                         Spacer()
-                        Text(TokenFormat.short(row.totals.total)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        Text(rowValue(row)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
                     GeometryReader { geometry in
                         Capsule()
@@ -243,6 +260,11 @@ private struct BreakdownList: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func rowValue(_ row: ReportRow) -> String {
+        let tokens = TokenFormat.short(row.totals.total)
+        return row.costUSD.map { "\(tokens) · \(money.approximate($0))" } ?? tokens
     }
 
     private func share(_ row: ReportRow) -> CGFloat {

@@ -33,6 +33,10 @@ public struct PanelView: View {
                 Divider()
                 LimitSplitSection(status: split, scope: "this week")
             }
+            if !dashboard.costs.isEmpty {
+                Divider()
+                CostSection(costs: dashboard.costs, unpricedReplies: dashboard.unpricedReplies, money: dashboard.money)
+            }
             Divider()
             usageSection
             if let problem = dashboard.problem {
@@ -56,7 +60,7 @@ public struct PanelView: View {
             footer
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 340)
     }
 
     @ViewBuilder private var limitsSection: some View {
@@ -94,16 +98,10 @@ public struct PanelView: View {
                 Text("\(TokenFormat.short(dashboard.todayNew)) new · \(TokenFormat.short(dashboard.today.cacheRead)) cached tokens")
                     .font(.callout)
                     .monospacedDigit()
-                if let cost = dashboard.todayCostUSD {
-                    Text("\(Money.text(cost)) at API prices, not what you pay")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
             }
             if !dashboard.days.isEmpty { DayBars(days: dashboard.days) }
             if !dashboard.projects.isEmpty { ProjectRows(projects: dashboard.projects) }
-            Text("Logged Claude Code use only. Chat, recent Cowork and some background requests aren't counted.")
+            Text("Costs and tokens cover logged Claude Code use only. Chat, recent Cowork and some background requests aren't counted.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -148,17 +146,16 @@ private struct LimitRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(limit.kind.title).font(.callout.weight(.medium))
-                if let status {
-                    Label(status, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(color)
-                }
-                Spacer()
-                Text("\(limit.percent)%").font(.callout.weight(.semibold)).monospacedDigit()
+                Text(limit.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(width: 124, alignment: .leading)
+
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule().fill(.quaternary)
@@ -168,10 +165,66 @@ private struct LimitRow: View {
                 }
             }
             .frame(height: 6)
-            Text(limit.detail).font(.caption).foregroundStyle(.secondary)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(limit.percent)% used")
+                    .font(.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(status == nil ? Color.secondary : color)
+                if let status {
+                    Label(status, systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption2)
+                        .foregroundStyle(color)
+                }
+            }
+            .fixedSize()
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(limit.kind.title) limit, \(limit.percent) percent used. \(status ?? "") \(limit.detail)")
+        .accessibilityLabel("\(limit.kind.title), \(limit.percent) percent of the limit used. \(status ?? "") \(limit.detail)")
+    }
+}
+
+/// What the same use would cost on the API, over four periods.
+private struct CostSection: View {
+    let costs: [CostPeriod]
+    let unpricedReplies: Int64
+    let money: MoneyFormat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Estimated cost at API prices").font(.callout.weight(.medium))
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(costs) { period in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(period.title).font(.caption).foregroundStyle(.secondary)
+                        Text(period.usd.map(money.plain) ?? "–")
+                            .font(.callout.weight(.semibold))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            Text("Your plan's price doesn't change with this. It shows what the same use would cost on the API.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let note = money.conversionNote {
+                Text(note)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if unpricedReplies > 0 {
+                Text("\(unpricedReplies) replies in the last 30 days used a model with no known price and aren't included.")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 

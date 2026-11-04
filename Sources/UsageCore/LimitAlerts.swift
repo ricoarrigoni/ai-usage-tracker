@@ -7,7 +7,7 @@ public struct LimitAlert: Equatable, Sendable, Identifiable {
     public var percent: Int
 
     public var id: String { "\(kind.rawValue)-\(Int(windowEnd.timeIntervalSince1970))-\(threshold)" }
-    public var title: String { "\(kind.title) limit at \(percent)%" }
+    public var title: String { "\(kind.limitName.prefix(1).uppercased() + kind.limitName.dropFirst()) at \(percent)%" }
     public func body(now: Date) -> String { "Resets \(Dashboard.timeText(windowEnd, now: now))." }
 }
 

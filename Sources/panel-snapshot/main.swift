@@ -20,13 +20,17 @@ func render(_ dashboard: Dashboard, scheme: ColorScheme, to url: URL) throws {
 
 func sample() -> Dashboard {
     var d = Dashboard()
-    d.menuTitle = "5h 86%"
+    d.menuTitle = "Week 100%"
     d.limits = [
         LimitDisplay(kind: .fiveHour, percent: 86, level: .nearLimit, detail: "Resets 16:40"),
         LimitDisplay(kind: .sevenDay, percent: 100, level: .reached, detail: "Resets Sat 19:00"),
     ]
-    d.pace = PaceMessage(text: "At this pace: 5-hour limit 16:10", isWarning: true)
+    d.pace = PaceMessage(text: "At this pace, you'll reach your session limit around 16:10", isWarning: true)
     d.freshness = "Updated 3 min ago"
+    d.costs = [
+        CostPeriod(title: "Session", usd: 12.40), CostPeriod(title: "Today", usd: 48.75),
+        CostPeriod(title: "7 days", usd: 312), CostPeriod(title: "30 days", usd: 1284),
+    ]
     d.problem = "12 log lines couldn't be read, so totals may be low."
     return d
 }
@@ -56,6 +60,7 @@ splitSample.limitSplit = .ready(claudeCodePercent: 72, otherPercent: 28, points:
 var withSplit = real
 withSplit.limitSplit = splitSample.limitSplit
 var warnings = sample()
+warnings.money = real.money
 warnings.today = real.today
 warnings.days = real.days
 warnings.projects = real.projects

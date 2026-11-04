@@ -136,6 +136,13 @@ public struct UsageHistory: Equatable, Sendable {
     public struct Day: Equatable, Sendable, Identifiable {
         public var date: Date
         public var totals: TokenTotals
+        public var costUSD: Double?
+
+        public init(date: Date, totals: TokenTotals, costUSD: Double? = nil) {
+            self.date = date
+            self.totals = totals
+            self.costUSD = costUSD
+        }
 
         public var id: Date { date }
         public var newTokens: Int64 { totals.input + totals.output + totals.cacheWrite }
@@ -146,7 +153,9 @@ public struct UsageHistory: Equatable, Sendable {
     public var projects: [ReportRow] = []
     public var models: [ReportRow] = []
     public var costUSD: Double?
-    public var costTrackedSince: Date?
+    /// Replies left out of `costUSD` because their model has no known price.
+    public var unpricedReplies: Int64 = 0
+    public var money = MoneyFormat.usd
     public var limitSplit: LimitSplitStatus?
     public var windows: [WindowSplit] = []
 

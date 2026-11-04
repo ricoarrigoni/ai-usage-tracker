@@ -4,8 +4,10 @@ public enum LimitKind: String, CaseIterable, Sendable {
     case fiveHour = "five_hour"
     case sevenDay = "seven_day"
 
-    public var title: String { self == .fiveHour ? "5-hour" : "7-day" }
-    public var shortTitle: String { self == .fiveHour ? "5h" : "7d" }
+    public var title: String { self == .fiveHour ? "Current session" : "This week" }
+    public var shortTitle: String { self == .fiveHour ? "Session" : "Week" }
+    /// For use in a sentence or an alert, such as "Session limit at 85%".
+    public var limitName: String { self == .fiveHour ? "session limit" : "weekly limit" }
     public var length: TimeInterval { self == .fiveHour ? 5 * 3600 : 7 * 86400 }
 }
 

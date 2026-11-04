@@ -12,6 +12,10 @@ public struct UsageRecord: Equatable, Sendable {
     public var output: Int64
     public var cacheWrite: Int64
     public var cacheRead: Int64
+    /// The part of `cacheWrite` kept for 5 minutes and for 1 hour, which have different prices.
+    public var cacheWrite5m: Int64 = 0
+    public var cacheWrite1h: Int64 = 0
+    public var isFast = false
 }
 
 public enum ParsedLine: Equatable, Sendable {
@@ -61,6 +65,29 @@ enum LineParser {
         var output_tokens: Int64?
         var cache_creation_input_tokens: Int64?
         var cache_read_input_tokens: Int64?
+        var cache_creation: CacheCreation?
+        var speed: String?
+
+        // Older logs don't have the newer fields, and that shouldn't fail the whole line.
+        enum CodingKeys: String, CodingKey {
+            case input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens
+            case cache_creation, speed
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            input_tokens = try c.decodeIfPresent(Int64.self, forKey: .input_tokens)
+            output_tokens = try c.decodeIfPresent(Int64.self, forKey: .output_tokens)
+            cache_creation_input_tokens = try c.decodeIfPresent(Int64.self, forKey: .cache_creation_input_tokens)
+            cache_read_input_tokens = try c.decodeIfPresent(Int64.self, forKey: .cache_read_input_tokens)
+            cache_creation = try? c.decodeIfPresent(CacheCreation.self, forKey: .cache_creation)
+            speed = try? c.decodeIfPresent(String.self, forKey: .speed)
+        }
+    }
+
+    private struct CacheCreation: Decodable {
+        var ephemeral_5m_input_tokens: Int64?
+        var ephemeral_1h_input_tokens: Int64?
     }
 
     static func parse(_ data: Data) -> ParsedLine {
@@ -87,7 +114,10 @@ enum LineParser {
             input: input,
             output: output,
             cacheWrite: usage.cache_creation_input_tokens ?? 0,
-            cacheRead: usage.cache_read_input_tokens ?? 0
+            cacheRead: usage.cache_read_input_tokens ?? 0,
+            cacheWrite5m: usage.cache_creation?.ephemeral_5m_input_tokens ?? 0,
+            cacheWrite1h: usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+            isFast: usage.speed == "fast"
         ))
     }
 

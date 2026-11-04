@@ -74,7 +74,11 @@ public struct Dashboard: Equatable, Sendable {
     public var freshness: String?
     public var isStale = false
     public var today = TokenTotals()
-    public var todayCostUSD: Double?
+    /// Current session, today, the last 7 days and the last 30 days, at API list prices.
+    public var costs: [CostPeriod] = []
+    /// Replies in the last 30 days left out of `costs` because their model has no known price.
+    public var unpricedReplies: Int64 = 0
+    public var money = MoneyFormat.usd
     public var limitSplit: LimitSplitStatus?
     public var days: [DayUsage] = []
     public var projects: [ReportRow] = []
@@ -160,7 +164,7 @@ extension Dashboard {
 
         if let soonest {
             return PaceMessage(
-                text: "At this pace: \(soonest.kind.title) limit \(timeText(soonest.at, now: now))",
+                text: "At this pace, you'll reach your \(soonest.kind.limitName) around \(timeText(soonest.at, now: now))",
                 isWarning: true
             )
         }
@@ -189,10 +193,41 @@ public actor DashboardEngine {
     private let store: UsageStore
     private let readingsFile: URL
     private var unreadableLines = 0
+    private let locations: Locations
+    private var lastRateAttempt: Date?
 
     public init(locations: Locations = .standard()) throws {
+        self.locations = locations
         store = try UsageStore(locations: locations)
         readingsFile = locations.dataDirectory.appendingPathComponent("readings.jsonl")
+    }
+
+    /// Downloads exchange rates when the saved ones are over a day old and this Mac's currency isn't
+    /// dollars. Only the app calls this, and the request carries no information about you or your
+    /// usage. Returns true when there are new rates to show.
+    public func updateExchangeRates(
+        now: Date = Date(),
+        locale: Locale = .current,
+        fetch: @Sendable (URL) async throws -> Data = { url in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            return try await URLSession(configuration: .ephemeral).data(for: request).0
+        }
+    ) async -> Bool {
+        guard let code = locale.currency?.identifier, code != "USD" else { return false }
+        let file = ExchangeRates.file(in: locations)
+        if let saved = ExchangeRates.load(from: file),
+           now.timeIntervalSince1970 - Double(saved.fetchedAt) < 24 * 3600 { return false }
+        if let lastRateAttempt, now.timeIntervalSince(lastRateAttempt) < 3600 { return false }
+        lastRateAttempt = now
+
+        guard let data = try? await fetch(ExchangeRates.source),
+              let rates = ExchangeRates.parse(data, fetchedAt: now),
+              let encoded = try? JSONEncoder().encode(rates)
+        else { return false }
+        try? FileManager.default.createDirectory(at: locations.dataDirectory, withIntermediateDirectories: true)
+        try? encoded.write(to: file, options: .atomic)
+        return true
     }
 
     private static let dayKeyFormat = Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
@@ -207,18 +242,21 @@ public actor DashboardEngine {
         let since = days.flatMap { calendar.date(byAdding: .day, value: -($0 - 1), to: today) }
 
         var result = UsageHistory()
+        result.money = .current(locations: locations)
         result.totals = try store.totals(since: since)
         result.projects = try store.report(by: .project, since: since)
         result.models = try store.report(by: .model, since: since)
 
         let rows = try store.report(by: .day, since: since)
-        let byDay = Dictionary(rows.map { ($0.label, $0.totals) }, uniquingKeysWith: { a, _ in a })
+        let byDay = Dictionary(rows.map { ($0.label, $0) }, uniquingKeysWith: { a, _ in a })
         let firstKey = rows.last?.label
         let firstRecorded = firstKey.flatMap { try? Self.dayKeyFormat.parse($0) }
         var day = since ?? firstRecorded.map { calendar.startOfDay(for: $0) } ?? today
         while day <= today {
-            let totals = byDay[day.formatted(Self.dayKeyFormat)] ?? TokenTotals()
-            result.days.append(UsageHistory.Day(date: day, totals: totals))
+            let row = byDay[day.formatted(Self.dayKeyFormat)]
+            result.days.append(UsageHistory.Day(
+                date: day, totals: row?.totals ?? TokenTotals(), costUSD: row?.costUSD
+            ))
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next
         }
@@ -226,9 +264,9 @@ public actor DashboardEngine {
         let stored = try store.allReadings()
         let ledger = CostLedger(readings: stored)
         let from = since ?? Date(timeIntervalSince1970: 0)
-        let spent = ledger.spend(from: from, to: now)
-        result.costUSD = spent > 0 ? spent : nil
-        result.costTrackedSince = ledger.firstSample
+        let cost = try store.cost(since: since)
+        result.costUSD = cost.usd > 0 ? cost.usd : nil
+        result.unpricedReplies = cost.unpricedReplies
 
         let attribution = LimitAttribution(
             history: LimitMerger.history(stored, kind: .fiveHour), ledger: ledger, now: now
@@ -245,6 +283,7 @@ public actor DashboardEngine {
         try store.trimReadings(file: readingsFile)
 
         var dashboard = Dashboard()
+        dashboard.money = .current(locations: locations)
         let readings = (try? LimitHistory.read(readingsFile)) ?? []
         let limitState = LimitMerger.merge(readings)
         if takeAlerts {
@@ -279,10 +318,6 @@ public actor DashboardEngine {
 
         let stored = try store.allReadings()
         let ledger = CostLedger(readings: stored)
-        if !ledger.isEmpty {
-            let spent = ledger.spend(from: today, to: now)
-            dashboard.todayCostUSD = spent > 0 ? spent : nil
-        }
         let attribution = LimitAttribution(
             history: LimitMerger.history(stored, kind: .fiveHour), ledger: ledger, now: now
         )
@@ -290,6 +325,22 @@ public actor DashboardEngine {
         let weekStart = weekEnd.flatMap { $0 > now ? $0.addingTimeInterval(-LimitKind.sevenDay.length) : nil }
             ?? now.addingTimeInterval(-LimitKind.sevenDay.length)
         dashboard.limitSplit = attribution.status(since: weekStart)
+
+        // Rolling periods, so a longer one never shows less than a shorter one, as a weekly limit
+        // that reset today or a month that just began would. They match the history window.
+        let sevenDays = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let thirtyDays = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        let thirtyDayCost = try store.cost(since: thirtyDays)
+        let sessionStart = limitState.windows[.fiveHour]?.resetsAt.flatMap {
+            $0 > now ? $0.addingTimeInterval(-LimitKind.fiveHour.length) : nil
+        }
+        dashboard.costs = [
+            CostPeriod(title: "Session", usd: try sessionStart.map { try store.cost(since: $0).usd }),
+            CostPeriod(title: "Today", usd: try store.cost(since: today).usd),
+            CostPeriod(title: "7 days", usd: try store.cost(since: sevenDays).usd),
+            CostPeriod(title: "30 days", usd: thirtyDayCost.usd),
+        ]
+        dashboard.unpricedReplies = thirtyDayCost.unpricedReplies
 
         if unreadableLines > 0 {
             dashboard.problem = "\(unreadableLines) log lines couldn't be read, so totals may be low."
