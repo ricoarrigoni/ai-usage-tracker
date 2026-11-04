@@ -11,7 +11,9 @@ import os
 from collections import Counter
 
 HOME = os.path.expanduser("~")
-READINGS = os.path.join(HOME, "Library/Application Support/AIUsageTracker/readings.jsonl")
+DATA_DIR = os.environ.get("AI_USAGE_TRACKER_DIR", os.path.join(HOME, "Library/Application Support/AIUsageTracker"))
+READINGS = os.path.join(DATA_DIR, "readings.jsonl")
+WINDOW_SLACK = 60  # seconds; reset times this close count as the same window
 DESKTOP = os.path.join(HOME, "Library/Application Support/Claude")
 
 
@@ -19,9 +21,30 @@ def stamp(t):
     return dt.datetime.fromtimestamp(t).strftime("%m-%d %H:%M")
 
 
-def pct(reading, window):
-    w = (reading.get("rate_limits") or {}).get(window) or {}
-    return w.get("used_percentage")
+def merged_timeline(rows):
+    """Combine readings from all sessions into one (time, five_hour, seven_day) timeline.
+
+    Open sessions can hold older values or be missing a window. Usage only rises within a
+    window, so keep the highest value for the newest window and ignore anything older.
+    """
+    current = {}
+    timeline = []
+    for r in rows:
+        limits = r.get("rate_limits") or {}
+        for name in ("five_hour", "seven_day"):
+            w = limits.get(name) or {}
+            value, resets = w.get("used_percentage"), w.get("resets_at")
+            if value is None or resets is None:
+                continue
+            have = current.get(name)
+            if have is None or resets > have[1] + WINDOW_SLACK:
+                current[name] = (value, resets)
+            elif resets >= have[1] - WINDOW_SLACK and value > have[0]:
+                current[name] = (value, have[1])
+        state = tuple((current.get(n) or (None,))[0] for n in ("five_hour", "seven_day"))
+        if not timeline or timeline[-1][1:] != state:
+            timeline.append((r["t"], *state))
+    return timeline
 
 
 def load_readings():
@@ -86,16 +109,13 @@ def main():
     usage = load_claude_code_usage()
     print("\nChanges in limits:")
     print(f"{'from':<12} {'to':<12} {'5h':>9} {'7d':>9} {'CC replies':>11} {'CC tokens':>13}")
-    last = with_limits[0] if with_limits else None
-    for r in with_limits[1:]:
-        fh0, fh1 = pct(last, "five_hour"), pct(r, "five_hour")
-        sd0, sd1 = pct(last, "seven_day"), pct(r, "seven_day")
-        if (fh0, sd0) == (fh1, sd1):
-            continue
-        hits = [n for t, n in usage if last["t"] < t <= r["t"]]
-        print(f"{stamp(last['t']):<12} {stamp(r['t']):<12} {f'{fh0}>{fh1}':>9} {f'{sd0}>{sd1}':>9} "
+    timeline = merged_timeline(with_limits)
+    for (t0, fh0, sd0), (t1, fh1, sd1) in zip(timeline, timeline[1:]):
+        hits = [n for t, n in usage if t0 < t <= t1]
+        print(f"{stamp(t0):<12} {stamp(t1):<12} {f'{fh0}>{fh1}':>9} {f'{sd0}>{sd1}':>9} "
               f"{len(hits):>11} {sum(hits):>13,}")
-        last = r
+    if timeline:
+        print(f"Latest: 5h {timeline[-1][1]}%, 7d {timeline[-1][2]}%")
 
     # A second, independent source of limit readings.
     path = os.path.join(DESKTOP, "plan-usage-history.json")
