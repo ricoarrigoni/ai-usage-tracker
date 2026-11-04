@@ -59,8 +59,9 @@ extension UsageStore {
                 .map { ReportRow(label: Self.sourceName($0.label), totals: $0.totals) }
                 .sorted(by: Self.largestFirst)
         case .project:
+            // Names come from every project ever seen, so a label doesn't change between reports.
+            let names = Self.displayNames(forPaths: try rows(selecting: "project", since: nil).map(\.label))
             let rows = try rows(selecting: "project", since: since)
-            let names = Self.displayNames(forPaths: rows.map(\.label))
             return rows
                 .map { ReportRow(label: names[$0.label] ?? $0.label, totals: $0.totals) }
                 .sorted(by: Self.largestFirst)

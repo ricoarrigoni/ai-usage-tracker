@@ -225,6 +225,23 @@ let appFolder = "-Users-me-Projects-App"
 }
 
 @Suite struct ReportTests {
+    @Test func projectLabelStaysTheSameInEveryPeriod() throws {
+        let sandbox = try Sandbox()
+        _ = try sandbox.write(
+            reply(id: "old", cwd: "/p/web/Tracker", timestamp: "2026-01-01T12:00:00Z"),
+            to: "-p-web-Tracker/a.jsonl"
+        )
+        _ = try sandbox.write(
+            reply(id: "new", cwd: "/p/ios/Tracker", timestamp: "2026-11-03T12:00:00Z"),
+            to: "-p-ios-Tracker/b.jsonl"
+        )
+        let store = try UsageStore(locations: sandbox.locations)
+        try store.sync()
+
+        let cutoff = try Date("2026-11-01T00:00:00Z", strategy: .iso8601)
+        #expect(try store.report(by: .project, since: cutoff).map(\.label) == ["ios/Tracker"])
+    }
+
     @Test func groupsAndFiltersByDate() throws {
         let sandbox = try Sandbox()
         _ = try sandbox.write(

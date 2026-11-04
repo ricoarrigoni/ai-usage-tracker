@@ -16,7 +16,8 @@ let usage = """
       --json                      Exact numbers as JSON
       --no-sync                   Don't read new logs first
 
-    Chat, and any Cowork work that left no logs on this Mac, aren't included.
+    Not included: chat, Cowork with no logs on this Mac, background requests Claude Code
+    doesn't log, and logs deleted before the first sync.
     """
 
 struct Options {
@@ -137,7 +138,8 @@ do {
             try printJSON(periods)
         } else {
             printTable(firstColumn: "Period", rows: periods)
-            print("\nNot included: chat, Cowork work with no logs on this Mac, and logs deleted before the first sync.")
+            print("\nNot included: chat, Cowork with no logs on this Mac, background requests Claude Code doesn't log,")
+            print("and logs deleted before the first sync.")
         }
     }
 } catch {

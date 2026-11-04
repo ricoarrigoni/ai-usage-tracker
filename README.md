@@ -22,11 +22,15 @@ model, project path, session ID and timestamps to
 database, and nothing leaves your Mac. History stays in the database after Claude Code deletes old
 logs, but logs deleted before the first sync can't be recovered. Chat has no token counts on this Mac.
 
+Claude Code doesn't log every request. In one measured session, the logs held 69% of the tokens shown
+by `/usage`. Most of the difference was cache reads, and output was within 5%, so treat these totals
+as a lower bound.
+
 ## Step 1: testing the data
 
 `scripts/statusline-capture.sh` is a Claude Code status line command. It saves limit readings to
 `~/Library/Application Support/AIUsageTracker/readings.jsonl`. It saves only the limit values, session
-ID, Claude Code version and a timestamp, never messages.
+cost, session ID, Claude Code version and a timestamp, never messages.
 
 See the results with:
 
