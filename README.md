@@ -13,8 +13,14 @@ open "dist/AI Usage Tracker.app"
 ```
 
 The menu bar shows whichever limit is fuller. The panel shows both limits, your pace, how recent the
-readings are, and today's logged usage. It checks for new data every 30 seconds and never sends
-anything to Claude.
+readings are, and today's logged usage. **History…** opens a window with usage per day, by project and
+by model, and each 5-hour window. The app checks for new data every 30 seconds and never sends anything
+to Claude.
+
+"Where your limit went" is an estimate. The app measures how many 5-hour limit points a dollar of Claude
+Code use costs, using Claude Code's own session cost. Any rise that doesn't explain goes to "Chat, Cowork
+& other". It stays in "still measuring" until it has three rises of at least 3 points to compare, and
+sessions with no status line, such as `claude -p`, count as "other".
 
 Limit readings come from the status line script described under Step 1, so they only change when
 Claude Code receives a reply.

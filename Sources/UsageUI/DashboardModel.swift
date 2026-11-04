@@ -8,7 +8,7 @@ import UsageCore
 public final class DashboardModel {
     public private(set) var dashboard = Dashboard()
 
-    @ObservationIgnored private let engine: DashboardEngine?
+    @ObservationIgnored public let engine: DashboardEngine?
     @ObservationIgnored private var loop: Task<Void, Never>?
 
     public init(refreshEvery seconds: Int = 30) {

@@ -199,3 +199,201 @@ private extension Date {
         #expect(dashboard.problem == nil)
     }
 }
+
+private func costReading(_ t: Int64, session: String = "a", cost: Double?, five: Double? = nil, resets: Int64 = 18000) -> LimitReading {
+    LimitReading(
+        t: t, session: session, cost_usd: cost,
+        rate_limits: .init(five_hour: five.map { .init(used_percentage: $0, resets_at: resets) })
+    )
+}
+
+@Suite struct CostLedgerTests {
+    @Test func firstSampleOnlySetsTheStartingPoint() {
+        let ledger = CostLedger(readings: [
+            costReading(100, cost: 5.0), costReading(200, cost: 6.5),
+        ])
+        #expect(ledger.spend(from: date(0), to: date(300)) == 1.5)
+    }
+
+    @Test func spendIsLimitedToThePeriodAndAddsSessions() {
+        let ledger = CostLedger(readings: [
+            costReading(100, cost: 1), costReading(200, cost: 2), costReading(300, cost: 4),
+            costReading(100, session: "b", cost: 0), costReading(300, session: "b", cost: 3),
+        ])
+        #expect(ledger.spend(from: date(200), to: date(300)) == 5)
+        #expect(ledger.spend(from: date(100), to: date(200)) == 1)
+    }
+
+    @Test func clearDoesNotCountAsNegativeSpend() {
+        let ledger = CostLedger(readings: [
+            costReading(100, cost: 9), costReading(200, cost: 0), costReading(300, cost: 2),
+        ])
+        #expect(ledger.spend(from: date(0), to: date(400)) == 2)
+    }
+}
+
+@Suite struct AttributionTests {
+    private let now = date(10000)
+
+    /// A rise of `points` for each `dollars`, three times over.
+    private func calibratedReadings(dollarsPerStep: Double, pointsPerStep: Double, steps: Int = 4) -> [LimitReading] {
+        (0...steps).map { i in
+            costReading(Int64(100 + i * 100), cost: Double(i) * dollarsPerStep, five: Double(i) * pointsPerStep)
+        }
+    }
+
+    private func attribution(_ readings: [LimitReading]) -> LimitAttribution {
+        LimitAttribution(
+            history: LimitMerger.history(readings, kind: .fiveHour),
+            ledger: CostLedger(readings: readings),
+            now: now
+        )
+    }
+
+    @Test func staysInLearningModeUntilThereAreEnoughMeasurements() {
+        let few = attribution(calibratedReadings(dollarsPerStep: 1, pointsPerStep: 4, steps: 2))
+        #expect(few.pointsPerDollar == nil)
+        #expect(few.status(since: date(0)) == .learning(measurements: 2, needed: 3))
+    }
+
+    @Test func allClaudeCodeUseIsExplainedByClaudeCode() {
+        let result = attribution(calibratedReadings(dollarsPerStep: 1, pointsPerStep: 4))
+        #expect(result.pointsPerDollar == 4)
+        #expect(result.status(since: date(0)) == .ready(claudeCodePercent: 100, otherPercent: 0, points: 16))
+    }
+
+    @Test func aRiseWithoutSpendingGoesToOther() throws {
+        var readings = calibratedReadings(dollarsPerStep: 1, pointsPerStep: 4)
+        // 16 points from Claude Code, then 16 more with no Claude Code spending.
+        readings.append(costReading(600, cost: 4, five: 32))
+        let result = attribution(readings)
+        #expect(result.pointsPerDollar == 4)
+        #expect(result.status(since: date(0)) == .ready(claudeCodePercent: 50, otherPercent: 50, points: 32))
+        let window = try #require(result.windows.first)
+        #expect(window.peak == 32)
+        #expect(window.claudeCode == 16)
+        #expect(window.other == 16)
+    }
+
+    @Test func rateComesFromTheLowEndSoOtherUseDoesntInflateIt() {
+        // Four rises at 4 points per dollar, and one inflated by Cowork running at the same time.
+        var readings = calibratedReadings(dollarsPerStep: 1, pointsPerStep: 4)
+        readings.append(costReading(600, cost: 5, five: 36))
+        #expect(attribution(readings).pointsPerDollar == 4)
+    }
+
+    @Test func smallRisesAreCombinedBeforeMeasuring() {
+        // +1 per reading is too rough on its own, so rises are grouped until they reach 3.
+        let readings = (0...9).map { i in
+            costReading(Int64(100 + i * 100), cost: Double(i) * 0.5, five: Double(i))
+        }
+        let result = attribution(readings)
+        #expect(result.measurements == 3)
+        #expect(result.pointsPerDollar == 2)
+    }
+
+    @Test func pointsBeforeCostTrackingAreLeftOut() throws {
+        var readings = [costReading(100, cost: nil, five: 40)]
+        readings += (0...4).map { i in
+            costReading(Int64(200 + i * 100), cost: Double(i), five: 40 + Double(i) * 4)
+        }
+        let result = attribution(readings)
+        let window = try #require(result.windows.first)
+        #expect(window.peak == 56)
+        #expect(window.measuredPoints == 16)
+        #expect(window.other == 0)
+    }
+
+    @Test func windowsEntirelyBeforeTrackingHaveNoSplit() throws {
+        let old = costReading(100, cost: nil, five: 30, resets: 1000)
+        var readings = [old]
+        readings += (0...4).map { i in
+            costReading(Int64(2000 + i * 100), cost: Double(i), five: Double(i) * 4, resets: 20000)
+        }
+        let result = attribution(readings)
+        #expect(result.windows.count == 2)
+        #expect(result.windows[0].claudeCode == nil)
+        #expect(result.windows[0].measuredPoints == 0)
+        #expect(result.windows[1].claudeCode == 16)
+    }
+}
+
+@Suite struct ReadingStoreTests {
+    private func line(_ t: Int, session: String = "a", percent: Int, cost: Double?) -> String {
+        let costText = cost.map { String($0) } ?? "null"
+        return #"{"t":\#(t),"session":"\#(session)","cost_usd":\#(costText),"rate_limits":{"five_hour":{"used_percentage":\#(percent),"resets_at":18000}}}"# + "\n"
+    }
+
+    @Test func repeatsAreSkippedAndNewLinesPickedUp() throws {
+        let sandbox = try Sandbox()
+        let store = try UsageStore(locations: sandbox.locations)
+        let file = sandbox.root.appendingPathComponent("readings.jsonl")
+        try Data((line(100, percent: 1, cost: 1) + line(160, percent: 1, cost: 1) + line(220, percent: 2, cost: 1.5)).utf8).write(to: file)
+
+        try store.syncReadings(from: file)
+        #expect(try store.allReadings().map(\.t) == [100, 220])
+
+        try sandbox.append(line(280, percent: 2, cost: 1.5) + line(340, session: "b", percent: 2, cost: 0), to: file)
+        try store.syncReadings(from: file)
+        let all = try store.allReadings()
+        #expect(all.map(\.t) == [100, 220, 340])
+        #expect(all.last?.session == "b")
+        #expect(all[1].cost_usd == 1.5)
+        #expect(all[1].rate_limits?.five_hour?.resets_at == 18000)
+
+        // Reading the file again adds nothing.
+        try store.syncReadings(from: file)
+        #expect(try store.allReadings().count == 3)
+    }
+
+    @Test func unfinishedLineWaitsUntilComplete() throws {
+        let sandbox = try Sandbox()
+        let store = try UsageStore(locations: sandbox.locations)
+        let file = sandbox.root.appendingPathComponent("readings.jsonl")
+        let second = line(200, percent: 2, cost: 2)
+        let cut = second.index(second.startIndex, offsetBy: 20)
+        try Data((line(100, percent: 1, cost: 1) + second[..<cut]).utf8).write(to: file)
+        try store.syncReadings(from: file)
+        #expect(try store.allReadings().count == 1)
+
+        try sandbox.append(String(second[cut...]), to: file)
+        try store.syncReadings(from: file)
+        #expect(try store.allReadings().count == 2)
+    }
+
+    @Test func missingFileIsFine() throws {
+        let sandbox = try Sandbox()
+        let store = try UsageStore(locations: sandbox.locations)
+        try store.syncReadings(from: sandbox.root.appendingPathComponent("nope.jsonl"))
+        #expect(try store.allReadings().isEmpty)
+    }
+}
+
+@Suite struct HistoryTests {
+    @Test func coversEveryDayInRangeWithTotals() async throws {
+        let sandbox = try Sandbox()
+        let now = Date()
+        let calendar = Calendar.current
+        let threeDaysAgo = calendar.date(byAdding: .day, value: -3, to: now)!
+        _ = try sandbox.write(
+            reply(id: "a", timestamp: now.addingTimeInterval(-60).formatted(.iso8601))
+                + reply(id: "b", model: "other", timestamp: threeDaysAgo.formatted(.iso8601)),
+            to: "\(appFolder)/s.jsonl"
+        )
+        let engine = try DashboardEngine(locations: sandbox.locations)
+
+        let week = try await engine.history(days: 7, now: now)
+        #expect(week.days.count == 7)
+        #expect(week.days.filter { $0.totals.replies > 0 }.count == 2)
+        #expect(week.totals.replies == 2)
+        #expect(week.models.count == 2)
+        #expect(week.costUSD == nil)
+
+        let two = try await engine.history(days: 2, now: now)
+        #expect(two.totals.replies == 1)
+
+        let all = try await engine.history(days: nil, now: now)
+        #expect(all.days.count == 4)
+        #expect(all.days.first?.totals.replies == 1)
+    }
+}

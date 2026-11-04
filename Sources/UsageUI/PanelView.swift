@@ -5,17 +5,28 @@ import UsageCore
 public struct PanelView: View {
     private let dashboard: Dashboard
     private let onRefresh: () -> Void
+    private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
 
-    public init(dashboard: Dashboard, onRefresh: @escaping () -> Void, onQuit: @escaping () -> Void) {
+    public init(
+        dashboard: Dashboard,
+        onRefresh: @escaping () -> Void,
+        onOpenHistory: @escaping () -> Void,
+        onQuit: @escaping () -> Void
+    ) {
         self.dashboard = dashboard
         self.onRefresh = onRefresh
+        self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             limitsSection
+            if let split = dashboard.limitSplit {
+                Divider()
+                LimitSplitSection(status: split, scope: "this week")
+            }
             Divider()
             usageSection
             if let problem = dashboard.problem {
@@ -66,6 +77,12 @@ public struct PanelView: View {
                 Text("\(TokenFormat.short(dashboard.todayNew)) new · \(TokenFormat.short(dashboard.today.cacheRead)) cached tokens")
                     .font(.callout)
                     .monospacedDigit()
+                if let cost = dashboard.todayCostUSD {
+                    Text("\(Money.text(cost)) at API prices, not what you pay")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             if !dashboard.days.isEmpty { DayBars(days: dashboard.days) }
             if !dashboard.projects.isEmpty { ProjectRows(projects: dashboard.projects) }
@@ -81,6 +98,9 @@ public struct PanelView: View {
             Button("Refresh", action: onRefresh)
                 .help("Reads new logs and limit readings. Doesn't send anything to Claude.")
                 .keyboardShortcut("r")
+            Spacer()
+            Button("History…", action: onOpenHistory)
+                .keyboardShortcut("h")
             Spacer()
             Button("Quit", action: onQuit)
                 .keyboardShortcut("q")

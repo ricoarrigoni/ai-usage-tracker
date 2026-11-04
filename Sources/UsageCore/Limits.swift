@@ -32,10 +32,14 @@ public struct LimitReading: Decodable, Equatable, Sendable {
     }
 
     public var t: Int64
+    public var session: String?
+    public var cost_usd: Double?
     public var rate_limits: Limits?
 
-    public init(t: Int64, rate_limits: Limits?) {
+    public init(t: Int64, session: String? = nil, cost_usd: Double? = nil, rate_limits: Limits?) {
         self.t = t
+        self.session = session
+        self.cost_usd = cost_usd
         self.rate_limits = rate_limits
     }
 
@@ -70,6 +74,36 @@ public struct LimitWindow: Equatable, Sendable {
     public var lastChange: Date
 }
 
+public struct LimitSample: Equatable, Sendable {
+    public var time: Date
+    public var percent: Double
+
+    public init(time: Date, percent: Double) {
+        self.time = time
+        self.percent = percent
+    }
+}
+
+/// One limit window from start to finish, or so far.
+public struct LimitWindowHistory: Equatable, Sendable {
+    public var kind: LimitKind
+    public var end: Date?
+    public var samples: [LimitSample]
+
+    public init(kind: LimitKind, end: Date?, samples: [LimitSample]) {
+        self.kind = kind
+        self.end = end
+        self.samples = samples
+    }
+
+    /// Windows have a fixed length, so the start follows from the end. Without one, the first reading.
+    public var start: Date? {
+        end.map { $0.addingTimeInterval(-kind.length) } ?? samples.first?.time
+    }
+
+    public var peak: Double { samples.map(\.percent).max() ?? 0 }
+}
+
 public struct LimitState: Equatable, Sendable {
     public var windows: [LimitKind: LimitWindow] = [:]
     public var newestReading: Date?
@@ -100,6 +134,33 @@ public enum LimitMerger {
             }
         }
         return state
+    }
+
+    /// Every window of one limit, oldest first, with each change in its value.
+    public static func history(_ readings: [LimitReading], kind: LimitKind) -> [LimitWindowHistory] {
+        var result: [LimitWindowHistory] = []
+        var current: LimitWindow?
+        for reading in readings.sorted(by: { $0.t < $1.t }) {
+            guard let window = reading.window(kind),
+                  let value = window.used_percentage,
+                  let resets = window.resets_at
+            else { continue }
+            let next = apply(value: value, resets: resets, at: reading.t, kind: kind, to: current)
+            guard let next else { continue }
+
+            let startsNewWindow = current == nil
+                || (current?.resetsAt != nil && next.resetsAt != current?.resetsAt)
+            if startsNewWindow {
+                result.append(LimitWindowHistory(kind: kind, end: next.resetsAt, samples: []))
+            }
+            let index = result.count - 1
+            result[index].end = next.resetsAt
+            if result[index].samples.last?.percent != next.percent {
+                result[index].samples.append(LimitSample(time: next.lastChange, percent: next.percent))
+            }
+            current = next
+        }
+        return result
     }
 
     private static func apply(

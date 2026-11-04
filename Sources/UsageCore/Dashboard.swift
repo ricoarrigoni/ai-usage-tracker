@@ -74,6 +74,8 @@ public struct Dashboard: Equatable, Sendable {
     public var freshness: String?
     public var isStale = false
     public var today = TokenTotals()
+    public var todayCostUSD: Double?
+    public var limitSplit: LimitSplitStatus?
     public var days: [DayUsage] = []
     public var projects: [ReportRow] = []
     public var problem: String?
@@ -191,8 +193,52 @@ public actor DashboardEngine {
         readingsFile = locations.dataDirectory.appendingPathComponent("readings.jsonl")
     }
 
+    private static let dayKeyFormat = Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
+
+    /// The numbers for the history window. A nil `days` means everything recorded.
+    public func history(days: Int?, now: Date = Date()) throws -> UsageHistory {
+        try store.sync()
+        try store.syncReadings(from: readingsFile)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        let since = days.flatMap { calendar.date(byAdding: .day, value: -($0 - 1), to: today) }
+
+        var result = UsageHistory()
+        result.totals = try store.totals(since: since)
+        result.projects = try store.report(by: .project, since: since)
+        result.models = try store.report(by: .model, since: since)
+
+        let rows = try store.report(by: .day, since: since)
+        let byDay = Dictionary(rows.map { ($0.label, $0.totals) }, uniquingKeysWith: { a, _ in a })
+        let firstKey = rows.last?.label
+        let firstRecorded = firstKey.flatMap { try? Self.dayKeyFormat.parse($0) }
+        var day = since ?? firstRecorded.map { calendar.startOfDay(for: $0) } ?? today
+        while day <= today {
+            let totals = byDay[day.formatted(Self.dayKeyFormat)] ?? TokenTotals()
+            result.days.append(UsageHistory.Day(date: day, totals: totals))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+
+        let stored = try store.allReadings()
+        let ledger = CostLedger(readings: stored)
+        let from = since ?? Date(timeIntervalSince1970: 0)
+        let spent = ledger.spend(from: from, to: now)
+        result.costUSD = spent > 0 ? spent : nil
+        result.costTrackedSince = ledger.firstSample
+
+        let attribution = LimitAttribution(
+            history: LimitMerger.history(stored, kind: .fiveHour), ledger: ledger, now: now
+        )
+        result.limitSplit = attribution.status(since: from)
+        result.windows = attribution.windows.filter { ($0.end ?? now) >= from }.reversed()
+        return result
+    }
+
     public func load(now: Date = Date()) throws -> Dashboard {
         unreadableLines += try store.sync().unrecognizedLines
+        try store.syncReadings(from: readingsFile)
 
         var dashboard = Dashboard()
         let readings = (try? LimitHistory.read(readingsFile)) ?? []
@@ -212,7 +258,7 @@ public actor DashboardEngine {
             try store.report(by: .day, since: firstDay).map { ($0.label, $0.totals.total) },
             uniquingKeysWith: +
         )
-        let keyFormat = Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
+        let keyFormat = Self.dayKeyFormat
         dashboard.days = (0..<7).compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else { return nil }
             return DayUsage(
@@ -222,6 +268,20 @@ public actor DashboardEngine {
                 isToday: day == today
             )
         }
+
+        let stored = try store.allReadings()
+        let ledger = CostLedger(readings: stored)
+        if !ledger.isEmpty {
+            let spent = ledger.spend(from: today, to: now)
+            dashboard.todayCostUSD = spent > 0 ? spent : nil
+        }
+        let attribution = LimitAttribution(
+            history: LimitMerger.history(stored, kind: .fiveHour), ledger: ledger, now: now
+        )
+        let weekEnd = LimitMerger.merge(stored).windows[.sevenDay]?.resetsAt
+        let weekStart = weekEnd.flatMap { $0 > now ? $0.addingTimeInterval(-LimitKind.sevenDay.length) : nil }
+            ?? now.addingTimeInterval(-LimitKind.sevenDay.length)
+        dashboard.limitSplit = attribution.status(since: weekStart)
 
         if unreadableLines > 0 {
             dashboard.problem = "\(unreadableLines) log lines couldn't be read, so totals may be low."

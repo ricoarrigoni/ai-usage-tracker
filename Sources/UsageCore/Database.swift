@@ -71,6 +71,7 @@ final class Statement {
             let position = Int32(index + 1)
             switch value {
             case .int(let number): sqlite3_bind_int64(pointer, position, number)
+            case .double(let number): sqlite3_bind_double(pointer, position, number)
             case .text(let text): sqlite3_bind_text(pointer, position, text, -1, copyText)
             case .null: sqlite3_bind_null(pointer, position)
             }
@@ -86,12 +87,17 @@ final class Statement {
 
     func int(_ column: Int32) -> Int64 { sqlite3_column_int64(pointer, column) }
 
+    func double(_ column: Int32) -> Double? {
+        sqlite3_column_type(pointer, column) == SQLITE_NULL ? nil : sqlite3_column_double(pointer, column)
+    }
+
     func text(_ column: Int32) -> String? {
         sqlite3_column_text(pointer, column).map { String(cString: $0) }
     }
 
     enum Value {
         case int(Int64)
+        case double(Double)
         case text(String)
         case null
     }

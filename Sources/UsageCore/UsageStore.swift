@@ -36,6 +36,16 @@ public final class UsageStore {
                 cache_read INTEGER NOT NULL
             ) WITHOUT ROWID;
             CREATE INDEX IF NOT EXISTS responses_ts ON responses (ts);
+            CREATE TABLE IF NOT EXISTS limit_readings (
+                session TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                five_pct REAL,
+                five_resets INTEGER,
+                seven_pct REAL,
+                seven_resets INTEGER,
+                cost REAL,
+                PRIMARY KEY (session, ts)
+            ) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS log_files (
                 path TEXT PRIMARY KEY,
                 file_id INTEGER NOT NULL,

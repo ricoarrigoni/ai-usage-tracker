@@ -7,7 +7,7 @@ import UsageUI
 
 @MainActor
 func render(_ dashboard: Dashboard, scheme: ColorScheme, to url: URL) throws {
-    let view = PanelView(dashboard: dashboard, onRefresh: {}, onQuit: {})
+    let view = PanelView(dashboard: dashboard, onRefresh: {}, onOpenHistory: {}, onQuit: {})
         .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.97))
         .environment(\.colorScheme, scheme)
     let renderer = ImageRenderer(content: view)
@@ -31,10 +31,30 @@ func sample() -> Dashboard {
     return d
 }
 
+@MainActor
+func renderHistory(_ history: UsageHistory, scheme: ColorScheme, to url: URL) throws {
+    let view = HistoryContent(history: history, problem: nil, range: .constant(.month)).sections
+        .frame(width: 620)
+        .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.97))
+        .environment(\.colorScheme, scheme)
+    let renderer = ImageRenderer(content: view)
+    renderer.scale = 2
+    guard let image = renderer.cgImage,
+          let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    else { throw CocoaError(.fileWriteUnknown) }
+    try png.write(to: url)
+}
+
 let folder = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? ".")
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-let real = try await DashboardEngine().load()
+let engine = try DashboardEngine()
+let real = try await engine.load()
+let history = try await engine.history(days: 30)
+var splitSample = history
+splitSample.limitSplit = .ready(claudeCodePercent: 72, otherPercent: 28, points: 40)
+var withSplit = real
+withSplit.limitSplit = splitSample.limitSplit
 var warnings = sample()
 warnings.today = real.today
 warnings.days = real.days
@@ -45,5 +65,8 @@ try await MainActor.run {
     try render(real, scheme: .dark, to: folder.appendingPathComponent("real-dark.png"))
     try render(warnings, scheme: .dark, to: folder.appendingPathComponent("warnings-dark.png"))
     try render(Dashboard(), scheme: .light, to: folder.appendingPathComponent("empty-light.png"))
+    try render(withSplit, scheme: .light, to: folder.appendingPathComponent("split-light.png"))
+    try renderHistory(history, scheme: .dark, to: folder.appendingPathComponent("history-dark.png"))
+    try renderHistory(splitSample, scheme: .light, to: folder.appendingPathComponent("history-light.png"))
 }
 print("menu title: \(real.menuTitle)")
