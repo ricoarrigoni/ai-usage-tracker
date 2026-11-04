@@ -68,15 +68,7 @@ func startDate(days: Int) -> Date {
     return calendar.date(byAdding: .day, value: -(days - 1), to: today) ?? today
 }
 
-func short(_ number: Int64) -> String {
-    let value = Double(number)
-    switch number {
-    case 1_000_000_000...: return String(format: "%.2fB", value / 1_000_000_000)
-    case 1_000_000...: return String(format: "%.1fM", value / 1_000_000)
-    case 1_000...: return String(format: "%.1fK", value / 1_000)
-    default: return String(number)
-    }
-}
+func short(_ number: Int64) -> String { TokenFormat.short(number) }
 
 func printTable(firstColumn: String, rows: [ReportRow]) {
     let headers = [firstColumn, "Replies", "Input", "Output", "Cache write", "Cache read", "Total"]

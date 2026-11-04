@@ -46,6 +46,16 @@ extension UsageStore {
         try rows(selecting: "'all'", since: since).first?.totals ?? TokenTotals()
     }
 
+    /// When Claude Code last replied, according to its logs.
+    public func latestReply(from source: Source) throws -> Date? {
+        var latest: Date?
+        try database.prepare("SELECT max(ts) FROM responses WHERE source = ?")
+            .run([.text(source.rawValue)]) { row in
+                if row.int(0) > 0 { latest = Date(timeIntervalSince1970: TimeInterval(row.int(0))) }
+            }
+        return latest
+    }
+
     /// Rows are newest first when grouped by day, and largest first otherwise.
     public func report(by grouping: Grouping, since: Date? = nil) throws -> [ReportRow] {
         switch grouping {

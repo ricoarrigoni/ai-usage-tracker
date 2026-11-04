@@ -3,7 +3,21 @@
 A Mac menu bar app that shows how much of your AI plan limits you have left, and where your usage went.
 Your data stays on your Mac.
 
-Status: the log reader and command line tool work. There is no menu bar app yet.
+Status: early. The menu bar app and command line tool run on one Mac, and setup is still manual.
+
+## Menu bar app
+
+```sh
+scripts/build-app.sh
+open "dist/AI Usage Tracker.app"
+```
+
+The menu bar shows whichever limit is fuller. The panel shows both limits, your pace, how recent the
+readings are, and today's logged usage. It checks for new data every 30 seconds and never sends
+anything to Claude.
+
+Limit readings come from the status line script described under Step 1, so they only change when
+Claude Code receives a reply.
 
 ## Command line tool
 
