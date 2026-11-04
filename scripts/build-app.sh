@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds "dist/AI Usage Tracker.app", signed for this Mac only.
+# Builds "dist/AI Usage Tracker.app". Signs with an Apple Development certificate when there
+# is one, because a stable signature lets macOS keep the app's permissions across rebuilds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,5 +12,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/AIUsageTracker"
 cp packaging/Info.plist "$APP/Contents/Info.plist"
-codesign --force --sign - "$APP"
-echo "Built $APP"
+
+IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -1)"
+codesign --force --sign "${IDENTITY:--}" "$APP"
+echo "Built $APP (signed with ${IDENTITY:-ad hoc signature})"

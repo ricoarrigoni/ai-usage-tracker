@@ -5,16 +5,31 @@ import UsageUI
 struct AIUsageTrackerApp: App {
     @State private var model: DashboardModel
     @State private var history: HistoryModel
+    @State private var loginItem = LoginItem()
+    private let notifier: AlertNotifier
 
     init() {
-        let dashboard = DashboardModel()
+        let notifier = AlertNotifier()
+        notifier.start()
+        self.notifier = notifier
+
+        // A way to check that notifications get through, without waiting to reach a limit.
+        if CommandLine.arguments.contains("--test-alert") {
+            notifier.send(
+                id: "test-\(UUID().uuidString)",
+                title: "5-hour limit at 80%",
+                body: "This is a test from AI Usage Tracker."
+            )
+        }
+
+        let dashboard = DashboardModel(onAlerts: { notifier.send($0) })
         _model = State(initialValue: dashboard)
         _history = State(initialValue: HistoryModel(engine: dashboard.engine))
     }
 
     var body: some Scene {
         MenuBarExtra {
-            PanelContainer(model: model)
+            PanelContainer(model: model, loginItem: loginItem)
         } label: {
             Text(model.dashboard.menuTitle).monospacedDigit()
         }
@@ -30,11 +45,14 @@ struct AIUsageTrackerApp: App {
 
 private struct PanelContainer: View {
     let model: DashboardModel
+    let loginItem: LoginItem
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         PanelView(
             dashboard: model.dashboard,
+            openAtLogin: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }),
+            loginNote: loginItem.note,
             onRefresh: { Task { await model.refresh() } },
             onOpenHistory: {
                 openWindow(id: "history")

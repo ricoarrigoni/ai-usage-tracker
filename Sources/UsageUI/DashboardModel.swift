@@ -10,8 +10,10 @@ public final class DashboardModel {
 
     @ObservationIgnored public let engine: DashboardEngine?
     @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private let onAlerts: @MainActor ([LimitAlert]) -> Void
 
-    public init(refreshEvery seconds: Int = 30) {
+    public init(refreshEvery seconds: Int = 30, onAlerts: @escaping @MainActor ([LimitAlert]) -> Void = { _ in }) {
+        self.onAlerts = onAlerts
         do {
             engine = try DashboardEngine()
         } catch {
@@ -29,7 +31,8 @@ public final class DashboardModel {
     public func refresh() async {
         guard let engine else { return }
         do {
-            dashboard = try await engine.load()
+            dashboard = try await engine.load(takeAlerts: true)
+            if !dashboard.alerts.isEmpty { onAlerts(dashboard.alerts) }
         } catch {
             dashboard.problem = "Couldn't read usage: \(error)"
         }

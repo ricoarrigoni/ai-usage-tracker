@@ -83,6 +83,33 @@ extension UsageStore {
         }
     }
 
+    /// Keeps the readings file small once its contents are safely in the database. It keeps enough
+    /// of the end for current limits, and a reading written during the swap is at worst one lost repeat.
+    public func trimReadings(file: URL, whenLargerThan limit: Int64 = 4 << 20, keeping keep: Int64 = 1 << 20) throws {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+              let size = (attributes[.size] as? NSNumber)?.int64Value, size > limit
+        else { return }
+        try syncReadings(from: file)
+
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(size - keep))
+        let tail = try handle.readToEnd() ?? Data()
+        guard let firstNewline = tail.firstIndex(of: 0x0A) else { return }
+        let kept = tail[tail.index(after: firstNewline)...]
+        guard let lastNewline = kept.lastIndex(of: 0x0A) else { return }
+        let complete = Data(kept[kept.startIndex...lastNewline])
+
+        try complete.write(to: file, options: .atomic)
+        let replaced = try FileManager.default.attributesOfItem(atPath: file.path)
+        let fileID = (replaced[.systemFileNumber] as? NSNumber)?.int64Value ?? 0
+        try database.prepare("""
+            INSERT INTO log_files (path, file_id, next_offset) VALUES (?, ?, ?)
+            ON CONFLICT (path) DO UPDATE SET
+                file_id = excluded.file_id, next_offset = excluded.next_offset
+            """).run([.text(file.path), .int(fileID), .int(Int64(complete.count))])
+    }
+
     public func allReadings() throws -> [LimitReading] {
         var readings: [LimitReading] = []
         try database.prepare("""

@@ -52,6 +52,7 @@ public final class UsageStore {
                 next_offset INTEGER NOT NULL
             ) WITHOUT ROWID;
             """)
+        try createAlertTable()
     }
 
     /// Reads whatever is new in the logs. Safe to run at any time, as often as you like.

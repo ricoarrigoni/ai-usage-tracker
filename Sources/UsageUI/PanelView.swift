@@ -7,14 +7,20 @@ public struct PanelView: View {
     private let onRefresh: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
+    private let openAtLogin: Binding<Bool>?
+    private let loginNote: String?
 
     public init(
         dashboard: Dashboard,
+        openAtLogin: Binding<Bool>? = nil,
+        loginNote: String? = nil,
         onRefresh: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.dashboard = dashboard
+        self.openAtLogin = openAtLogin
+        self.loginNote = loginNote
         self.onRefresh = onRefresh
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
@@ -36,6 +42,17 @@ public struct PanelView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Divider()
+            if let openAtLogin {
+                Toggle("Open at login", isOn: openAtLogin)
+                    .toggleStyle(.checkbox)
+                    .font(.callout)
+            }
+            if let loginNote {
+                Text(loginNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             footer
         }
         .padding(14)

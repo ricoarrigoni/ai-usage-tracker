@@ -8,9 +8,12 @@ Status: early. The menu bar app and command line tool run on one Mac, and setup 
 ## Menu bar app
 
 ```sh
-scripts/build-app.sh
-open "dist/AI Usage Tracker.app"
+scripts/install-app.sh   # builds, copies to /Applications and opens it
 ```
+
+The app sends one notification per window at 80% and at 95%, and has an **Open at login** checkbox.
+It signs with your Apple Development certificate when there is one, so macOS keeps its permissions
+across rebuilds.
 
 The menu bar shows whichever limit is fuller. The panel shows both limits, your pace, how recent the
 readings are, and today's logged usage. **History…** opens a window with usage per day, by project and

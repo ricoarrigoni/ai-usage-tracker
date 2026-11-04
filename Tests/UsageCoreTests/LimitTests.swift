@@ -397,3 +397,101 @@ private func costReading(_ t: Int64, session: String = "a", cost: Double?, five:
         #expect(all.days.first?.totals.replies == 1)
     }
 }
+
+@Suite struct AlertTests {
+    private let now = date(1_000_000)
+    private let end = date(1_010_000)
+
+    private func window(_ percent: Double, end: Date?) -> LimitWindow {
+        LimitWindow(kind: .fiveHour, percent: percent, resetsAt: end, lastChange: now)
+    }
+
+    @Test(arguments: [(79.0, nil), (80.0, 80), (94.0, 80), (95.0, 95), (100.0, 95)] as [(Double, Int?)])
+    func thresholds(percent: Double, expected: Int?) {
+        #expect(LimitAlerts.due(window(percent, end: end), alreadySent: 0, now: now)?.threshold == expected)
+    }
+
+    @Test func aSentThresholdIsntRepeatedButAHigherOneIs() {
+        #expect(LimitAlerts.due(window(85, end: end), alreadySent: 80, now: now) == nil)
+        #expect(LimitAlerts.due(window(96, end: end), alreadySent: 80, now: now)?.threshold == 95)
+        #expect(LimitAlerts.due(window(96, end: end), alreadySent: 95, now: now) == nil)
+    }
+
+    @Test func finishedOrUnknownWindowsDontAlert() {
+        #expect(LimitAlerts.due(window(90, end: date(999_000)), alreadySent: 0, now: now) == nil)
+        #expect(LimitAlerts.due(window(90, end: nil), alreadySent: 0, now: now) == nil)
+    }
+
+    @Test func eachAlertIsSentOnceAcrossRestartsAndAgainForANewWindow() throws {
+        let sandbox = try Sandbox()
+        var state = LimitState()
+        state.windows[.fiveHour] = window(85, end: end)
+
+        let first = try UsageStore(locations: sandbox.locations)
+        #expect(try first.takeDueAlerts(state, now: now).map(\.threshold) == [80])
+        #expect(try first.takeDueAlerts(state, now: now).isEmpty)
+
+        let restarted = try UsageStore(locations: sandbox.locations)
+        #expect(try restarted.takeDueAlerts(state, now: now).isEmpty)
+
+        state.windows[.fiveHour]?.percent = 97
+        let higher = try restarted.takeDueAlerts(state, now: now)
+        #expect(higher.map(\.threshold) == [95])
+        #expect(higher.first?.title == "5-hour limit at 97%")
+
+        state.windows[.fiveHour] = window(81, end: date(1_030_000))
+        #expect(try restarted.takeDueAlerts(state, now: now).map(\.threshold) == [80])
+    }
+
+    @Test func loadingOnlyMarksAlertsWhenAskedTo() async throws {
+        let sandbox = try Sandbox()
+        let t = Int64(Date().timeIntervalSince1970)
+        try FileManager.default.createDirectory(at: sandbox.locations.dataDirectory, withIntermediateDirectories: true)
+        let line = #"{"t":\#(t),"rate_limits":{"five_hour":{"used_percentage":90,"resets_at":\#(t + 3600)}}}"# + "\n"
+        try Data(line.utf8).write(to: sandbox.locations.dataDirectory.appendingPathComponent("readings.jsonl"))
+
+        let engine = try DashboardEngine(locations: sandbox.locations)
+        #expect(try await engine.load().alerts.isEmpty)
+        #expect(try await engine.load(takeAlerts: true).alerts.count == 1)
+        #expect(try await engine.load(takeAlerts: true).alerts.isEmpty)
+    }
+}
+
+@Suite struct TrimTests {
+    private func line(_ t: Int, percent: Int) -> String {
+        #"{"t":\#(t),"session":"a","cost_usd":\#(t),"rate_limits":{"five_hour":{"used_percentage":\#(percent),"resets_at":18000}}}"# + "\n"
+    }
+
+    @Test func aSmallFileIsLeftAlone() throws {
+        let sandbox = try Sandbox()
+        let store = try UsageStore(locations: sandbox.locations)
+        let file = sandbox.root.appendingPathComponent("readings.jsonl")
+        try Data(line(1, percent: 1).utf8).write(to: file)
+        let before = try Data(contentsOf: file)
+        try store.trimReadings(file: file)
+        #expect(try Data(contentsOf: file) == before)
+    }
+
+    @Test func trimmingKeepsTheEndAndLosesNoHistory() throws {
+        let sandbox = try Sandbox()
+        let store = try UsageStore(locations: sandbox.locations)
+        let file = sandbox.root.appendingPathComponent("readings.jsonl")
+        let text = (1...200).map { line($0, percent: $0 / 10) }.joined()
+        try Data(text.utf8).write(to: file)
+
+        try store.trimReadings(file: file, whenLargerThan: 2000, keeping: 1000)
+
+        let kept = try LimitHistory.read(file)
+        #expect(kept.last?.t == 200)
+        #expect(kept.count < 20)
+        #expect(try Data(contentsOf: file).count <= 1000)
+        #expect(try store.allReadings().map(\.t) == Array(1...200))
+
+        // New readings after the trim are still picked up, and nothing is read twice.
+        try sandbox.append(line(201, percent: 99), to: file)
+        try store.syncReadings(from: file)
+        let all = try store.allReadings()
+        #expect(all.count == 201)
+        #expect(all.last?.t == 201)
+    }
+}

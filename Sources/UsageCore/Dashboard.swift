@@ -79,6 +79,8 @@ public struct Dashboard: Equatable, Sendable {
     public var days: [DayUsage] = []
     public var projects: [ReportRow] = []
     public var problem: String?
+    /// Alerts to deliver now. Only filled in when loading with `takeAlerts`.
+    public var alerts: [LimitAlert] = []
 
     public init() {}
 
@@ -236,14 +238,20 @@ public actor DashboardEngine {
         return result
     }
 
-    public func load(now: Date = Date()) throws -> Dashboard {
+    /// `takeAlerts` marks due alerts as sent, so only the running app should use it.
+    public func load(now: Date = Date(), takeAlerts: Bool = false) throws -> Dashboard {
         unreadableLines += try store.sync().unrecognizedLines
         try store.syncReadings(from: readingsFile)
+        try store.trimReadings(file: readingsFile)
 
         var dashboard = Dashboard()
         let readings = (try? LimitHistory.read(readingsFile)) ?? []
+        let limitState = LimitMerger.merge(readings)
+        if takeAlerts {
+            dashboard.alerts = try store.takeDueAlerts(limitState, now: now)
+        }
         dashboard.applyLimits(
-            LimitMerger.merge(readings),
+            limitState,
             lastReply: try store.latestReply(from: .claudeCode),
             now: now
         )
