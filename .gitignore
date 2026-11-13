@@ -6,3 +6,10 @@ dist/
 *.xcuserstate
 xcuserdata/
 __pycache__/
+
+# Snapshots and exports can show real usage and project names
+snapshots/
+*.png
+*.dmg
+*.sqlite
+*.jsonl
