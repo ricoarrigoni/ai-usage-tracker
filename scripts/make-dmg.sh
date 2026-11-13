@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a signed, notarized "dist/AI-Usage-Tracker-<version>.dmg" that other Macs can open
+# Builds a signed, notarized "dist/AI-Usage-Tracker.dmg" that other Macs can open
 # without a security warning.
 #
 # One-time setup on the Mac that makes releases:
@@ -28,8 +28,9 @@ fi
 
 SIGN_IDENTITY="$IDENTITY" scripts/build-app.sh
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' packaging/Info.plist)"
-DMG="dist/AI-Usage-Tracker-$VERSION.dmg"
+# The name stays the same in every release, so .../releases/latest/download/AI-Usage-Tracker.dmg
+# always downloads the newest version.
+DMG="dist/AI-Usage-Tracker.dmg"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 

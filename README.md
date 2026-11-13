@@ -7,8 +7,8 @@ Status: early. Requires macOS 15 or later.
 
 ## Install
 
-Download the latest `AI-Usage-Tracker-<version>.dmg` from the
-[Releases page](https://github.com/ricoarrigoni/ai-usage-tracker/releases), open it, and drag
+[Download AI-Usage-Tracker.dmg](https://github.com/ricoarrigoni/ai-usage-tracker/releases/latest/download/AI-Usage-Tracker.dmg)
+(always the newest version, also on the [Releases page](https://github.com/ricoarrigoni/ai-usage-tracker/releases)), open it, and drag
 **AI Usage Tracker** to **Applications**. The app is signed and notarized by Apple.
 
 Or [build it from source](#build-from-source).
@@ -116,13 +116,14 @@ committed by accident. To add an image on purpose, use `git add -f`.
 
 ### Making a release
 
-`scripts/make-dmg.sh` builds a signed, notarized `dist/AI-Usage-Tracker-<version>.dmg`. It needs a
+`scripts/make-dmg.sh` builds a signed, notarized `dist/AI-Usage-Tracker.dmg`. It needs a
 Developer ID Application certificate and saved notarization credentials; the one-time setup is at the
 top of the script. Bump `CFBundleShortVersionString` and `CFBundleVersion` in `packaging/Info.plist`,
-run the script, then attach the `.dmg` to a GitHub release:
+run the script, then attach the `.dmg` to a GitHub release. Keep the file name unchanged so the
+download link in this README and on the project page keeps working:
 
 ```sh
-gh release create v0.1.0 dist/AI-Usage-Tracker-0.1.0.dmg --title "0.1.0" --notes "First release"
+gh release create v0.1.0 dist/AI-Usage-Tracker.dmg --title "0.1.0" --notes "First release"
 ```
 
 ## License
