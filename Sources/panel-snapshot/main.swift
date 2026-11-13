@@ -1,5 +1,6 @@
 // Development tool: renders the panel to PNG files so its layout can be checked without opening it.
-// Usage: panel-snapshot <output folder>
+// Usage: panel-snapshot [output folder]   (default: "snapshots", which git ignores)
+// The images show your real usage and project names, so don't share or commit them.
 import AppKit
 import SwiftUI
 import UsageCore
@@ -49,7 +50,7 @@ func renderHistory(_ history: UsageHistory, scheme: ColorScheme, to url: URL) th
     try png.write(to: url)
 }
 
-let folder = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? ".")
+let folder = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "snapshots")
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
 let engine = try DashboardEngine()

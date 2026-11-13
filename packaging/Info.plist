@@ -4,7 +4,7 @@
 <dict>
     <key>CFBundleName</key><string>AI Usage Tracker</string>
     <key>CFBundleDisplayName</key><string>AI Usage Tracker</string>
-    <key>CFBundleIdentifier</key><string>com.ricardoarrigoni.aiusagetracker</string>
+    <key>CFBundleIdentifier</key><string>io.github.ricoarrigoni.aiusagetracker</string>
     <key>CFBundleExecutable</key><string>AIUsageTracker</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
