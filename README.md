@@ -34,6 +34,9 @@ script saves only the limit values, session cost, session ID, Claude Code versio
 `~/Library/Application Support/AIUsageTracker/readings.jsonl`, never messages. It uses `/usr/bin/jq`,
 which comes with macOS 15.
 
+You can also skip the status line and press **Refresh** whenever you want current limits (see
+[Refresh](#refresh)). The status line keeps them current on its own while you use Claude Code.
+
 ## Privacy
 
 - The app reads Claude Code logs and any Cowork logs on your Mac and saves only numbers, model,
@@ -41,6 +44,8 @@ which comes with macOS 15.
   Message text is never read into the database.
 - It never signs in to your Claude account and never sends your usage anywhere: there is no
   analytics or tracking.
+- **Refresh** runs your installed Claude Code once, which sends a one-word message to Claude (see
+  [Refresh](#refresh)). Claude Code handles the login; the app never sees it.
 - If your Mac's currency isn't US dollars, it downloads the European Central Bank's reference rates
   once a day. That request carries nothing about you or your usage.
 - To remove everything it stored, quit the app and delete `~/Library/Application Support/AIUsageTracker`.
@@ -49,7 +54,7 @@ See [SECURITY.md](SECURITY.md) to report a security problem.
 
 ## Menu bar app
 
-The menu bar shows whichever limit is fuller. The panel shows your current session and weekly limits,
+The menu bar shows your session limit (clock icon), then your weekly limit (calendar icon). The panel shows your current session and weekly limits,
 your pace, how recent the readings are, what your logged use would cost at API prices, and today's
 usage. **History…** opens a window with usage and cost per day, by project and by model, and your
 sessions. A session is Claude's 5-hour limit window. The app checks for new data every 30 seconds.
@@ -61,7 +66,20 @@ Code use costs, using Claude Code's own session cost. Any rise that doesn't expl
 & other". It stays in "still measuring" until it has three rises of at least 3 points to compare, and
 sessions with no status line, such as `claude -p`, count as "other".
 
-Limit readings only change when Claude Code receives a reply.
+Limit readings change when Claude Code receives a reply, or when you press Refresh.
+
+### Refresh
+
+**Refresh** gets your current limits without you opening Claude Code. It runs your installed `claude`
+command once in print mode, with the message "Reply with OK" on the smallest model and no tools, MCP
+servers, skills or settings, and reads the limits Claude Code reports in its output. It takes about
+2 seconds and saves nothing to your Claude Code history. Each press uses a very small part of your
+session limit (about $0.0006 at API prices), so the automatic 30-second update never does this; it
+only reads local data.
+
+The app looks for `claude` in the usual install places (the native installer, Homebrew, npm and nvm),
+then asks your login shell. Limits from Refresh are whole percentages rounded down, like the status
+line's.
 
 Costs apply API list prices to the tokens in your logs, including cache reads and writes. They show what
 the same use would cost on the API, not what your plan costs. The logs miss some background requests, so

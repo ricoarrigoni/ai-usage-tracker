@@ -6,6 +6,22 @@ import SwiftUI
 import UsageCore
 import UsageUI
 
+/// The menu bar title on a light bar, at 4x so the icons can be inspected.
+@MainActor
+func renderMenuBar(_ dashboard: Dashboard, to url: URL) throws {
+    guard let title = MenuBarTitle.image(for: dashboard, scale: 4) else { return }
+    let view = Image(nsImage: title)
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(Color(white: 0.93))
+    let renderer = ImageRenderer(content: view)
+    renderer.scale = 4
+    guard let image = renderer.cgImage,
+          let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    else { throw CocoaError(.fileWriteUnknown) }
+    try png.write(to: url)
+}
+
 @MainActor
 func render(_ dashboard: Dashboard, scheme: ColorScheme, to url: URL) throws {
     let view = PanelView(dashboard: dashboard, onRefresh: {}, onOpenHistory: {}, onQuit: {})
@@ -21,7 +37,7 @@ func render(_ dashboard: Dashboard, scheme: ColorScheme, to url: URL) throws {
 
 func sample() -> Dashboard {
     var d = Dashboard()
-    d.menuTitle = "Week 100%"
+    d.menuTitle = "86% · 100%"
     d.limits = [
         LimitDisplay(kind: .fiveHour, percent: 86, level: .nearLimit, detail: "Resets 16:40"),
         LimitDisplay(kind: .sevenDay, percent: 100, level: .reached, detail: "Resets Sat 19:00"),
@@ -74,5 +90,6 @@ try await MainActor.run {
     try render(withSplit, scheme: .light, to: folder.appendingPathComponent("split-light.png"))
     try renderHistory(history, scheme: .dark, to: folder.appendingPathComponent("history-dark.png"))
     try renderHistory(splitSample, scheme: .light, to: folder.appendingPathComponent("history-light.png"))
+    try renderMenuBar(real, to: folder.appendingPathComponent("menubar.png"))
 }
 print("menu title: \(real.menuTitle)")

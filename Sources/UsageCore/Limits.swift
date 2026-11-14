@@ -13,7 +13,7 @@ public enum LimitKind: String, CaseIterable, Sendable {
 
 /// One line of `readings.jsonl`, saved by the status line script.
 public struct LimitReading: Decodable, Equatable, Sendable {
-    public struct Window: Decodable, Equatable, Sendable {
+    public struct Window: Codable, Equatable, Sendable {
         public var used_percentage: Double?
         public var resets_at: Int64?
 
@@ -23,7 +23,7 @@ public struct LimitReading: Decodable, Equatable, Sendable {
         }
     }
 
-    public struct Limits: Decodable, Equatable, Sendable {
+    public struct Limits: Codable, Equatable, Sendable {
         public var five_hour: Window?
         public var seven_day: Window?
 

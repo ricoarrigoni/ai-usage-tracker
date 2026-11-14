@@ -68,7 +68,10 @@ public struct DayUsage: Equatable, Sendable, Identifiable {
 
 /// Everything the menu bar and panel show, already worked out and ready to display.
 public struct Dashboard: Equatable, Sendable {
+    /// Session, then week, such as "3% · 5%". A missing window shows as "–".
     public var menuTitle = "AI –"
+    /// The menu title spelled out for VoiceOver.
+    public var menuAccessibilityLabel = "AI usage, no limit readings yet"
     public var limits: [LimitDisplay] = []
     public var pace: PaceMessage?
     public var freshness: String?
@@ -103,6 +106,7 @@ extension Dashboard {
             freshness = nil
             isStale = false
             menuTitle = "AI –"
+            menuAccessibilityLabel = "AI usage, no limit readings yet"
             return
         }
 
@@ -118,8 +122,11 @@ extension Dashboard {
         limits = LimitKind.allCases.compactMap { kind in
             state.windows[kind].map { Self.display($0, now: now) }
         }
-        let top = limits.max { $0.percent < $1.percent }
-        menuTitle = top.map { "\($0.kind.shortTitle) \($0.percent)%" } ?? "AI –"
+        let byKind = Dictionary(limits.map { ($0.kind, $0.percent) }, uniquingKeysWith: { a, _ in a })
+        menuTitle = LimitKind.allCases.map { byKind[$0].map { "\($0)%" } ?? "–" }.joined(separator: " · ")
+        menuAccessibilityLabel = LimitKind.allCases.map { kind in
+            "\(kind.shortTitle) \(byKind[kind].map { "\($0) percent" } ?? "no reading")"
+        }.joined(separator: ", ")
         pace = isStale ? nil : Self.pace(state, asOf: asOf, now: now)
     }
 
@@ -289,9 +296,13 @@ public actor DashboardEngine {
         if takeAlerts {
             dashboard.alerts = try store.takeDueAlerts(limitState, now: now)
         }
+        // A Refresh check confirms the values as of its time, even when they didn't change.
+        let lastCheck = readings.filter { $0.session == LimitCheck.session && $0.rate_limits != nil }
+            .map { Date(timeIntervalSince1970: TimeInterval($0.t)) }.max()
+        let lastReply = try store.latestReply(from: .claudeCode)
         dashboard.applyLimits(
             limitState,
-            lastReply: try store.latestReply(from: .claudeCode),
+            lastReply: [lastReply, lastCheck].compactMap { $0 }.max(),
             now: now
         )
 
