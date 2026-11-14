@@ -94,14 +94,15 @@ private func date(_ t: Int64) -> Date { Date(timeIntervalSince1970: TimeInterval
         return s
     }
 
-    @Test func menuTitleShowsTheFullerLimit() {
+    @Test func menuTitleShowsSessionThenWeek() {
         var d = Dashboard()
         d.applyLimits(
             state(window(.fiveHour, 12, resets: 1_010_000, changed: 999_990),
                   window(.sevenDay, 40, resets: 1_400_000, changed: 999_990)),
             lastReply: nil, now: now
         )
-        #expect(d.menuTitle == "Week 40%")
+        #expect(d.menuTitle == "12% · 40%")
+        #expect(d.menuAccessibilityLabel == "Session 12 percent, Week 40 percent")
         #expect(d.limits.map(\.kind) == [.fiveHour, .sevenDay])
     }
 
@@ -184,7 +185,7 @@ private extension Date {
         try Data(line.utf8).write(to: sandbox.locations.dataDirectory.appendingPathComponent("readings.jsonl"))
 
         let dashboard = try await DashboardEngine(locations: sandbox.locations).load(now: now)
-        #expect(dashboard.menuTitle == "Session 12%")
+        #expect(dashboard.menuTitle == "12% · –")
         #expect(dashboard.days.count == 7)
         #expect(dashboard.days.last?.isToday == true)
         #expect(dashboard.days.last?.total == 100)

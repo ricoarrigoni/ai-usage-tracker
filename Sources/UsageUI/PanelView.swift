@@ -9,11 +9,15 @@ public struct PanelView: View {
     private let onQuit: () -> Void
     private let openAtLogin: Binding<Bool>?
     private let loginNote: String?
+    private let isChecking: Bool
+    private let checkProblem: String?
 
     public init(
         dashboard: Dashboard,
         openAtLogin: Binding<Bool>? = nil,
         loginNote: String? = nil,
+        isChecking: Bool = false,
+        checkProblem: String? = nil,
         onRefresh: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
         onQuit: @escaping () -> Void
@@ -21,6 +25,8 @@ public struct PanelView: View {
         self.dashboard = dashboard
         self.openAtLogin = openAtLogin
         self.loginNote = loginNote
+        self.isChecking = isChecking
+        self.checkProblem = checkProblem
         self.onRefresh = onRefresh
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
@@ -39,7 +45,7 @@ public struct PanelView: View {
             }
             Divider()
             usageSection
-            if let problem = dashboard.problem {
+            ForEach([checkProblem, dashboard.problem].compactMap { $0 }, id: \.self) { problem in
                 Label(problem, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -67,7 +73,7 @@ public struct PanelView: View {
         if dashboard.limits.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("No limit readings yet").font(.headline)
-                Text("Limits appear after your next Claude Code reply.")
+                Text("Press Refresh to check them, or they appear after your next Claude Code reply.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -81,7 +87,7 @@ public struct PanelView: View {
                 }
                 if let freshness = dashboard.freshness {
                     Label(
-                        dashboard.isStale ? "\(freshness). Refreshes when Claude Code replies" : freshness,
+                        dashboard.isStale ? "\(freshness). Press Refresh to check" : freshness,
                         systemImage: "clock"
                     )
                     .font(.caption)
@@ -110,9 +116,10 @@ public struct PanelView: View {
 
     private var footer: some View {
         HStack {
-            Button("Refresh", action: onRefresh)
-                .help("Reads new logs and limit readings. Doesn't send anything to Claude.")
+            Button(isChecking ? "Checking…" : "Refresh", action: onRefresh)
+                .help("Asks Claude Code for your current limits with a one-word message on the smallest model, which uses a tiny part of your session limit. Also reads new logs.")
                 .keyboardShortcut("r")
+                .disabled(isChecking)
             Spacer()
             Button("History…", action: onOpenHistory)
                 .keyboardShortcut("h")
@@ -148,7 +155,11 @@ private struct LimitRow: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(limit.kind.title).font(.callout.weight(.medium))
+                HStack(spacing: 5) {
+                    LimitIcon(limit.kind).frame(width: 14, height: 14)
+                    Text(limit.kind.title)
+                }
+                .font(.callout.weight(.medium))
                 Text(limit.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)

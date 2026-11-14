@@ -28,6 +28,26 @@ public final class DashboardModel {
         }
     }
 
+    /// True while the Refresh button is asking Claude Code for the current limits.
+    public private(set) var isChecking = false
+    /// Why the last limit check failed, until the next one.
+    public private(set) var checkProblem: String?
+
+    /// What the Refresh button does: asks Claude Code for current limits, then reloads everything.
+    /// Logs and the dashboard still reload when the check fails.
+    public func checkLimitsAndRefresh() async {
+        guard !isChecking else { return }
+        isChecking = true
+        defer { isChecking = false }
+        do {
+            try await Task.detached { try await LimitCheck.run() }.value
+            checkProblem = nil
+        } catch {
+            checkProblem = "\(error)"
+        }
+        await refresh()
+    }
+
     public func refresh() async {
         guard let engine else { return }
         do {

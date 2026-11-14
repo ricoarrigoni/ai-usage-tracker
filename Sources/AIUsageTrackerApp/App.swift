@@ -1,4 +1,5 @@
 import SwiftUI
+import UsageCore
 import UsageUI
 
 @main
@@ -31,7 +32,8 @@ struct AIUsageTrackerApp: App {
         MenuBarExtra {
             PanelContainer(model: model, loginItem: loginItem)
         } label: {
-            Text(model.dashboard.menuTitle).monospacedDigit()
+            MenuTitle(dashboard: model.dashboard)
+                .accessibilityLabel(model.dashboard.menuAccessibilityLabel)
         }
         .menuBarExtraStyle(.window)
 
@@ -40,6 +42,20 @@ struct AIUsageTrackerApp: App {
         }
         .defaultSize(width: 640, height: 760)
         .defaultLaunchBehavior(.suppressed)
+    }
+}
+
+/// Both limits with their icons, session first, drawn as one image. Text until there are readings.
+private struct MenuTitle: View {
+    let dashboard: Dashboard
+    @Environment(\.displayScale) private var scale
+
+    var body: some View {
+        if let image = MenuBarTitle.image(for: dashboard, scale: scale) {
+            Image(nsImage: image)
+        } else {
+            Text(dashboard.menuTitle).monospacedDigit()
+        }
     }
 }
 
@@ -53,7 +69,9 @@ private struct PanelContainer: View {
             dashboard: model.dashboard,
             openAtLogin: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }),
             loginNote: loginItem.note,
-            onRefresh: { Task { await model.refresh() } },
+            isChecking: model.isChecking,
+            checkProblem: model.checkProblem,
+            onRefresh: { Task { await model.checkLimitsAndRefresh() } },
             onOpenHistory: {
                 openWindow(id: "history")
                 NSApplication.shared.activate()
