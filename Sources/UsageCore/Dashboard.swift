@@ -40,6 +40,24 @@ public struct LimitDisplay: Equatable, Sendable, Identifiable {
     }
 }
 
+/// A weekly limit for one model, such as Fable. It counts only that model's use, separately
+/// from "This week", and is known only from Refresh checks.
+public struct ModelLimitDisplay: Equatable, Sendable, Identifiable {
+    public var model: String
+    public var percent: Int
+    public var level: LimitLevel
+    public var detail: String
+
+    public var id: String { model }
+
+    public init(model: String, percent: Int, level: LimitLevel, detail: String) {
+        self.model = model
+        self.percent = percent
+        self.level = level
+        self.detail = detail
+    }
+}
+
 public struct PaceMessage: Equatable, Sendable {
     public var text: String
     public var isWarning: Bool
@@ -73,6 +91,8 @@ public struct Dashboard: Equatable, Sendable {
     /// The menu title spelled out for VoiceOver.
     public var menuAccessibilityLabel = "AI usage, no limit readings yet"
     public var limits: [LimitDisplay] = []
+    /// Shown below "This week", from the newest Refresh check that reported them.
+    public var modelLimits: [ModelLimitDisplay] = []
     public var pace: PaceMessage?
     public var freshness: String?
     public var isStale = false
@@ -128,6 +148,28 @@ extension Dashboard {
             "\(kind.shortTitle) \(byKind[kind].map { "\($0) percent" } ?? "no reading")"
         }.joined(separator: ", ")
         pace = isStale ? nil : Self.pace(state, asOf: asOf, now: now)
+    }
+
+    /// Model limits from the newest reading that has them. Their value only changes when Refresh
+    /// checks, so an older check says when it was made.
+    mutating func applyModelLimits(_ readings: [LimitReading], now: Date) {
+        guard let newest = readings.filter({ $0.model_weeks?.isEmpty == false }).max(by: { $0.t < $1.t }),
+              let weeks = newest.model_weeks
+        else { modelLimits = []; return }
+        let checked = Date(timeIntervalSince1970: TimeInterval(newest.t))
+        let age = now.timeIntervalSince(checked)
+
+        modelLimits = weeks.keys.sorted().compactMap { model in
+            guard let window = weeks[model], let value = window.used_percentage else { return nil }
+            let end = window.resets_at.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+            let shown = LimitWindow(kind: .sevenDay, percent: value, resetsAt: end, lastChange: checked)
+            let base = Self.display(shown, now: now)
+            var detail = base.detail
+            if age > Self.staleAfter, end.map({ $0 > now }) ?? true {
+                detail += " · checked \(Self.ageText(age))"
+            }
+            return ModelLimitDisplay(model: model, percent: base.percent, level: base.level, detail: detail)
+        }
     }
 
     static func display(_ window: LimitWindow, now: Date) -> LimitDisplay {
@@ -296,6 +338,7 @@ public actor DashboardEngine {
         if takeAlerts {
             dashboard.alerts = try store.takeDueAlerts(limitState, now: now)
         }
+        dashboard.applyModelLimits(readings, now: now)
         // A Refresh check confirms the values as of its time, even when they didn't change.
         let lastCheck = readings.filter { $0.session == LimitCheck.session && $0.rate_limits != nil }
             .map { Date(timeIntervalSince1970: TimeInterval($0.t)) }.max()

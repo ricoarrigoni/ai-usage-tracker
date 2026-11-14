@@ -37,12 +37,18 @@ public struct LimitReading: Decodable, Equatable, Sendable {
     public var session: String?
     public var cost_usd: Double?
     public var rate_limits: Limits?
+    /// Weekly limits for single models, such as "Fable". Only Refresh checks report these.
+    public var model_weeks: [String: Window]?
 
-    public init(t: Int64, session: String? = nil, cost_usd: Double? = nil, rate_limits: Limits?) {
+    public init(
+        t: Int64, session: String? = nil, cost_usd: Double? = nil, rate_limits: Limits?,
+        model_weeks: [String: Window]? = nil
+    ) {
         self.t = t
         self.session = session
         self.cost_usd = cost_usd
         self.rate_limits = rate_limits
+        self.model_weeks = model_weeks
     }
 
     func window(_ kind: LimitKind) -> Window? {
