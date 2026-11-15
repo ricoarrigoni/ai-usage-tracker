@@ -44,8 +44,8 @@ You can also skip the status line and press **Refresh** whenever you want curren
   Message text is never read into the database.
 - It never signs in to your Claude account and never sends your usage anywhere: there is no
   analytics or tracking.
-- **Refresh** runs your installed Claude Code once, which sends a one-word message to Claude (see
-  [Refresh](#refresh)). Claude Code handles the login; the app never sees it.
+- **Refresh** runs your installed Claude Code's `/usage` command (see [Refresh](#refresh)). Claude
+  Code handles the login; the app never sees it.
 - If your Mac's currency isn't US dollars, it downloads the European Central Bank's reference rates
   once a day. That request carries nothing about you or your usage.
 - To remove everything it stored, quit the app and delete `~/Library/Application Support/AIUsageTracker`.
@@ -71,15 +71,23 @@ Limit readings change when Claude Code receives a reply, or when you press Refre
 ### Refresh
 
 **Refresh** gets your current limits without you opening Claude Code. It runs your installed `claude`
-command once in print mode, with the message "Reply with OK" on the smallest model and no tools, MCP
-servers, skills or settings, and reads the limits Claude Code reports in its output. It takes about
-2 seconds and saves nothing to your Claude Code history. Each press uses a very small part of your
-session limit (about $0.0006 at API prices), so the automatic 30-second update never does this; it
-only reads local data.
+command in print mode with Claude Code's own `/usage` command, with no MCP servers or settings, and
+reads the limits it prints. That sends no message to Claude, so it doesn't use your limits. It takes
+about 2 seconds and saves nothing to your Claude Code history. The automatic 30-second update only
+reads local data.
+
+`/usage` also reports weekly limits for single models, such as **Fable**, which appear as an extra
+line under "This week". Only Refresh can read these, so the line says when it was last checked once
+that's more than 30 minutes ago. Its percentages are rounded to the nearest point, like the Claude
+apps, so they can read one point above the status line's, which rounds down.
+
+If `/usage` output can't be read (for example, after Claude Code changes its wording), Refresh falls
+back to sending "Reply with OK" on the smallest model with no tools, and reads the session and weekly
+limits Claude Code reports with the reply. That uses a very small part of your session limit (about
+$0.0006 at API prices) and has no model lines.
 
 The app looks for `claude` in the usual install places (the native installer, Homebrew, npm and nvm),
-then asks your login shell. Limits from Refresh are whole percentages rounded down, like the status
-line's.
+then asks your login shell.
 
 Costs apply API list prices to the tokens in your logs, including cache reads and writes. They show what
 the same use would cost on the API, not what your plan costs. The logs miss some background requests, so

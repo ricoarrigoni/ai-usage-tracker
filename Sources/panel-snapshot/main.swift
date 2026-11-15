@@ -42,6 +42,7 @@ func sample() -> Dashboard {
         LimitDisplay(kind: .fiveHour, percent: 86, level: .nearLimit, detail: "Resets 16:40"),
         LimitDisplay(kind: .sevenDay, percent: 100, level: .reached, detail: "Resets Sat 19:00"),
     ]
+    d.modelLimits = [ModelLimitDisplay(model: "Fable", percent: 45, level: .normal, detail: "Resets Sat 19:00 · checked 2 h ago")]
     d.pace = PaceMessage(text: "At this pace, you'll reach your session limit around 16:10", isWarning: true)
     d.freshness = "Updated 3 min ago"
     d.costs = [

@@ -79,7 +79,8 @@ public struct PanelView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(dashboard.limits) { LimitRow(limit: $0) }
+                ForEach(dashboard.limits) { LimitRow($0) }
+                ForEach(dashboard.modelLimits) { LimitRow($0) }
                 if let pace = dashboard.pace {
                     Label(pace.text, systemImage: pace.isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle")
                         .font(.caption)
@@ -117,7 +118,7 @@ public struct PanelView: View {
     private var footer: some View {
         HStack {
             Button(isChecking ? "Checking…" : "Refresh", action: onRefresh)
-                .help("Asks Claude Code for your current limits with a one-word message on the smallest model, which uses a tiny part of your session limit. Also reads new logs.")
+                .help("Asks Claude Code for your current limits with its /usage command, which doesn't use your limits. Also reads new logs.")
                 .keyboardShortcut("r")
                 .disabled(isChecking)
             Spacer()
@@ -134,7 +135,21 @@ public struct PanelView: View {
 }
 
 private struct LimitRow: View {
-    let limit: LimitDisplay
+    let title: String
+    let icon: AnyView
+    let limit: (percent: Int, level: LimitLevel, detail: String)
+
+    init(_ display: LimitDisplay) {
+        title = display.kind.title
+        icon = AnyView(LimitIcon(display.kind))
+        limit = (display.percent, display.level, display.detail)
+    }
+
+    init(_ display: ModelLimitDisplay) {
+        title = display.model
+        icon = AnyView(ModelLimitIcon())
+        limit = (display.percent, display.level, display.detail)
+    }
 
     private var color: Color {
         switch limit.level {
@@ -156,8 +171,8 @@ private struct LimitRow: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    LimitIcon(limit.kind).frame(width: 14, height: 14)
-                    Text(limit.kind.title)
+                    icon.frame(width: 14, height: 14)
+                    Text(title)
                 }
                 .font(.callout.weight(.medium))
                 Text(limit.detail)
@@ -192,7 +207,7 @@ private struct LimitRow: View {
             .fixedSize()
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(limit.kind.title), \(limit.percent) percent of the limit used. \(status ?? "") \(limit.detail)")
+        .accessibilityLabel("\(title), \(limit.percent) percent of the limit used. \(status ?? "") \(limit.detail)")
     }
 }
 
