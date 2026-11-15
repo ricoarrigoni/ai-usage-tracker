@@ -53,6 +53,43 @@ func sample() -> Dashboard {
     return d
 }
 
+/// Made-up figures for screenshots shared publicly, such as the project page. No real data.
+func marketingSample() -> Dashboard {
+    var d = Dashboard()
+    d.limits = [
+        LimitDisplay(kind: .fiveHour, percent: 62, level: .normal, detail: "Resets 16:40"),
+        LimitDisplay(kind: .sevenDay, percent: 41, level: .normal, detail: "Resets Sat 19:00"),
+    ]
+    d.modelLimits = [ModelLimitDisplay(model: "Fable", percent: 23, level: .normal, detail: "Resets Sat 19:00")]
+    d.pace = PaceMessage(text: "On pace to stay under your limits", isWarning: false)
+    d.freshness = "Updated just now"
+    d.limitSplit = .ready(claudeCodePercent: 72, otherPercent: 28, points: 40)
+    d.costs = [
+        CostPeriod(title: "Session", usd: 6.40), CostPeriod(title: "Today", usd: 14.20),
+        CostPeriod(title: "7 days", usd: 96), CostPeriod(title: "30 days", usd: 310),
+    ]
+    d.today.input = 200_000
+    d.today.output = 1_000_000
+    d.today.cacheRead = 51_000_000
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    let millions: [Int64] = [41, 88, 12, 8, 64, 118, 52]
+    let letters = ["T", "F", "S", "S", "M", "T", "W"]
+    d.days = millions.indices.map { index in
+        DayUsage(
+            day: calendar.date(byAdding: .day, value: index - 6, to: today) ?? today,
+            weekdayLetter: letters[index], total: millions[index] * 1_000_000, isToday: index == 6
+        )
+    }
+    func project(_ label: String, _ total: Int64) -> ReportRow {
+        var totals = TokenTotals()
+        totals.cacheRead = total
+        return ReportRow(label: label, totals: totals)
+    }
+    d.projects = [project("Website", 34_000_000), project("Mobile app", 18_000_000)]
+    return d
+}
+
 @MainActor
 func renderHistory(_ history: UsageHistory, scheme: ColorScheme, to url: URL) throws {
     let view = HistoryContent(history: history, problem: nil, range: .constant(.month)).sections
@@ -92,5 +129,7 @@ try await MainActor.run {
     try renderHistory(history, scheme: .dark, to: folder.appendingPathComponent("history-dark.png"))
     try renderHistory(splitSample, scheme: .light, to: folder.appendingPathComponent("history-light.png"))
     try renderMenuBar(real, to: folder.appendingPathComponent("menubar.png"))
+    try render(marketingSample(), scheme: .light, to: folder.appendingPathComponent("marketing-light.png"))
+    try renderMenuBar(marketingSample(), to: folder.appendingPathComponent("marketing-menubar.png"))
 }
 print("menu title: \(real.menuTitle)")
