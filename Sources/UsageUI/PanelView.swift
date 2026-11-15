@@ -147,7 +147,7 @@ private struct LimitRow: View {
 
     init(_ display: ModelLimitDisplay) {
         title = display.model
-        icon = AnyView(Image(systemName: "sparkle"))
+        icon = AnyView(ModelLimitIcon())
         limit = (display.percent, display.level, display.detail)
     }
 

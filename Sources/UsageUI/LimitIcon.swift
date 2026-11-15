@@ -16,6 +16,12 @@ public struct LimitIcon: View {
     }
 }
 
+/// The icon for a single model's weekly limit, such as Fable.
+public struct ModelLimitIcon: View {
+    public init() {}
+    public var body: some View { Image(systemName: "sparkle") }
+}
+
 /// A clock whose rim turns into dots on the lower left, like time running out of a window.
 /// Sized from its frame, so it follows the font it sits next to.
 struct SessionClock: View {
@@ -60,16 +66,23 @@ public enum MenuBarTitle {
         let byKind = Dictionary(dashboard.limits.map { ($0.kind, $0.percent) }, uniquingKeysWith: { a, _ in a })
         let font = NSFont.menuBarFont(ofSize: 0).pointSize
 
+        func item(_ icon: some View, _ value: String) -> some View {
+            HStack(spacing: 3) {
+                icon
+                    .font(.system(size: font * 0.92))
+                    .frame(width: font * 1.05, height: font * 1.05)
+                Text(value)
+                    .font(.system(size: font))
+                    .monospacedDigit()
+            }
+        }
+
         let content = HStack(spacing: 7) {
             ForEach(LimitKind.allCases, id: \.self) { kind in
-                HStack(spacing: 3) {
-                    LimitIcon(kind)
-                        .font(.system(size: font * 0.92))
-                        .frame(width: font * 1.05, height: font * 1.05)
-                    Text(byKind[kind].map { "\($0)%" } ?? "–")
-                        .font(.system(size: font))
-                        .monospacedDigit()
-                }
+                item(LimitIcon(kind), byKind[kind].map { "\($0)%" } ?? "–")
+            }
+            ForEach(dashboard.modelLimits) { model in
+                item(ModelLimitIcon(), "\(model.percent)%")
             }
         }
         .foregroundStyle(.black)

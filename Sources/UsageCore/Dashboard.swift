@@ -348,6 +348,10 @@ public actor DashboardEngine {
             lastReply: [lastReply, lastCheck].compactMap { $0 }.max(),
             now: now
         )
+        if !dashboard.limits.isEmpty {
+            dashboard.menuAccessibilityLabel += dashboard.modelLimits
+                .map { ", \($0.model) \($0.percent) percent" }.joined()
+        }
 
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
